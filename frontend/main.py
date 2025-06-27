@@ -143,7 +143,7 @@ class MainWindow(QMainWindow):
         self.current_index = -1
 
         # Bookmarks initialization
-        self.bookmarks = []  # List of dicts: {"url": ..., "title": ...}
+        self.bookmarks = []  # List of dicts: {"url": ..., "title": ..."}
         self.load_bookmarks()
 
         # Create main widget and layout
@@ -988,41 +988,17 @@ class MainWindow(QMainWindow):
             }
         """)
         
-        # Add menu actions
+        # Add menu actions with emojis/logos
         menu.addAction("🌙 Toggle Dark Mode", self.toggle_dark_mode_menu)
         menu.addSeparator()
-        menu.addAction("📊 View Page Source", self.view_page_source)
-        menu.addAction("🛠️ Inspect Element", self.inspect_element)
-        menu.addSeparator()
-        menu.addAction("📋 Bookmarks Manager", self.open_bookmarks_manager)
+        menu.addAction("� History", self.open_history)
+        menu.addAction("⬇️ Downloads", self.show_downloads)
         menu.addAction("⚙️ Settings", self.open_settings)
-        menu.addSeparator()
-        menu.addAction("❓ About Adapta", self.show_about)
         
         # Show menu at button position
         button_rect = self.menu_button.geometry()
         menu_pos = self.menu_button.mapToGlobal(button_rect.bottomLeft())
         menu.exec_(menu_pos)
-
-    def inspect_element(self):
-        """Open the built-in inspector/devtools for the current page (like Inspect Element in browsers)"""
-        tab = self.current_tab()
-        if tab and tab.browser:
-            # Robust DevTools window creation for PyQt5
-            if not hasattr(tab, '_devtools_window') or tab._devtools_window is None:
-                from PyQt5.QtWebEngineWidgets import QWebEngineView
-                devtools = QWebEngineView()
-                devtools.setWindowTitle("DevTools")
-                devtools.resize(900, 600)
-                devtools.show()
-                tab._devtools_window = devtools
-                tab.browser.page().setDevToolsPage(devtools.page())
-            else:
-                tab._devtools_window.show()
-                tab._devtools_window.raise_()
-                tab._devtools_window.activateWindow()
-            # Always trigger InspectElement to highlight
-            tab.browser.page().triggerAction(tab.browser.page().InspectElement)
 
     def toggle_dark_mode_menu(self):
         """Toggle dark mode from menu"""
@@ -1037,31 +1013,15 @@ class MainWindow(QMainWindow):
                 if "adapta_home.html" in current_url or "adapta://home" in current_url:
                     self.go_home(tab=tab)
 
-    def view_page_source(self):
-        """View page source (placeholder)"""
-        from PyQt5.QtWidgets import QMessageBox
-        QMessageBox.information(self, "Page Source", "Page source viewer coming soon!")
-
     def open_dev_tools(self):
         """Open developer tools (placeholder)"""
         from PyQt5.QtWidgets import QMessageBox
         QMessageBox.information(self, "Developer Tools", "Developer tools coming soon!")
 
-    def open_bookmarks_manager(self):
-        """Open bookmarks manager (placeholder)"""
-        from PyQt5.QtWidgets import QMessageBox
-        QMessageBox.information(self, "Bookmarks", "Bookmarks manager coming soon!")
-
     def open_settings(self):
         """Open settings (placeholder)"""
         from PyQt5.QtWidgets import QMessageBox
         QMessageBox.information(self, "Settings", "Settings panel coming soon!")
-
-    def show_about(self):
-        """Show about dialog"""
-        from PyQt5.QtWidgets import QMessageBox
-        QMessageBox.about(self, "About Adapta", 
-                         "Adapta Browser\n\nA modern, fast browser built with PyQt5\n\nVersion 1.0")
 
     def handle_voice_command(self):
         """Handle voice commands for browser navigation and control"""
@@ -1211,6 +1171,171 @@ class MainWindow(QMainWindow):
         
         # If no command matched
         QMessageBox.information(self, "Voice Command", f"Command not recognized: '{command}'\n\nTry commands like:\n• 'Go to YouTube'\n• 'Open new tab'\n• 'Go back'\n• 'Search for cats'")
+
+    def open_history(self):
+        """Open browser history dialog"""
+        from PyQt5.QtWidgets import QDialog, QVBoxLayout, QListWidget, QListWidgetItem, QPushButton, QHBoxLayout, QLabel
+        
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Browser History")
+        dialog.setMinimumSize(500, 400)
+        dialog.resize(600, 500)
+        
+        layout = QVBoxLayout(dialog)
+        
+        # Header
+        header = QLabel("📜 Browser History")
+        header.setStyleSheet("font-size: 16px; font-weight: bold; padding: 10px; color: #333;")
+        layout.addWidget(header)
+        
+        # History list
+        history_list = QListWidget()
+        history_list.setStyleSheet("""
+            QListWidget {
+                border: 1px solid #ddd;
+                border-radius: 8px;
+                background-color: #fff;
+                font-size: 14px;
+            }
+            QListWidget::item {
+                padding: 8px;
+                border-bottom: 1px solid #eee;
+            }
+            QListWidget::item:hover {
+                background-color: #f5f5f5;
+            }
+            QListWidget::item:selected {
+                background-color: #e3f2fd;
+            }
+        """)
+        
+        # Collect history from all tabs
+        all_history = []
+        for i in range(self.tabs.count()):
+            tab = self.tabs.widget(i)
+            if tab and tab.browser and hasattr(tab, 'history'):
+                for url in tab.history:
+                    if url not in [h['url'] for h in all_history]:
+                        # Try to get page title
+                        if tab.browser.url().toString() == url:
+                            title = tab.browser.title() or url
+                        else:
+                            title = url
+                        all_history.append({'url': url, 'title': title})
+        
+        # Populate history list
+        if all_history:
+            for item in all_history:
+                list_item = QListWidgetItem()
+                list_item.setText(f"{item['title']}\n{item['url']}")
+                list_item.setData(1, item['url'])  # Store URL for navigation
+                history_list.addItem(list_item)
+        else:
+            no_history = QListWidgetItem("No browsing history available")
+            no_history.setFlags(no_history.flags() & ~Qt.ItemIsSelectable)
+            history_list.addItem(no_history)
+        
+        layout.addWidget(history_list)
+        
+        # Buttons
+        button_layout = QHBoxLayout()
+        
+        visit_button = QPushButton("🌐 Visit Selected")
+        visit_button.setStyleSheet("""
+            QPushButton {
+                background-color: #007aff;
+                color: white;
+                border: none;
+                padding: 8px 16px;
+                border-radius: 6px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #005bb5;
+            }
+            QPushButton:disabled {
+                background-color: #ccc;
+            }
+        """)
+        
+        clear_button = QPushButton("🗑️ Clear History")
+        clear_button.setStyleSheet("""
+            QPushButton {
+                background-color: #ff3b30;
+                color: white;
+                border: none;
+                padding: 8px 16px;
+                border-radius: 6px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #d70015;
+            }
+        """)
+        
+        close_button = QPushButton("✖️ Close")
+        close_button.setStyleSheet("""
+            QPushButton {
+                background-color: #8e8e93;
+                color: white;
+                border: none;
+                padding: 8px 16px;
+                border-radius: 6px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #6d6d70;
+            }
+        """)
+        
+        def visit_selected():
+            current_item = history_list.currentItem()
+            if current_item and current_item.data(1):
+                url = current_item.data(1)
+                self.url_input.setText(url)
+                self.navigate_to_url()
+                dialog.close()
+        
+        def clear_history():
+            from PyQt5.QtWidgets import QMessageBox
+            reply = QMessageBox.question(dialog, "Clear History", 
+                                       "Are you sure you want to clear all browsing history?",
+                                       QMessageBox.Yes | QMessageBox.No)
+            if reply == QMessageBox.Yes:
+                # Clear history from all tabs
+                for i in range(self.tabs.count()):
+                    tab = self.tabs.widget(i)
+                    if tab and hasattr(tab, 'history'):
+                        tab.history = []
+                        tab.current_index = -1
+                dialog.close()
+                QMessageBox.information(self, "History Cleared", "Browsing history has been cleared.")
+        
+        visit_button.clicked.connect(visit_selected)
+        clear_button.clicked.connect(clear_history)
+        close_button.clicked.connect(dialog.close)
+        
+        # Enable visit button only when an item is selected
+        def on_selection_changed():
+            visit_button.setEnabled(history_list.currentItem() is not None and 
+                                  history_list.currentItem().data(1) is not None)
+        
+        history_list.itemSelectionChanged.connect(on_selection_changed)
+        on_selection_changed()  # Initial state
+        
+        # Double-click to visit
+        history_list.itemDoubleClicked.connect(lambda: visit_selected())
+        
+        button_layout.addWidget(visit_button)
+        button_layout.addWidget(clear_button)
+        button_layout.addStretch()
+        button_layout.addWidget(close_button)
+        
+        layout.addLayout(button_layout)
+        
+        dialog.exec_()
+
+    # ...existing code...
 if __name__ == "__main__":
     app = QApplication(sys.argv)
     window = MainWindow()
