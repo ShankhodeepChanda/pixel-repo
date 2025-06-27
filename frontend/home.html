@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Home</title>
+    <link rel="stylesheet" href="home.css">
+</head>
+
+<body class="{{theme_class}}">
+    <div class="container">
+        <div class="header">
+            <div class="time" id="current-time">{{current_time}}</div>
+            <div class="date">{{current_date}}</div>
+
+            <div class="search-container">
+                <input type="text" class="search-box" placeholder="Search or enter website URL"
+                    onkeypress="if(event.key==='Enter') handleSearch(this.value)">
+            </div>
+        </div>
+
+        <div class="bookmarks-section">
+            <h2 class="section-title">Frequently Visited</h2>
+            <div class="bookmarks-grid" id="bookmarks-grid">
+                {{bookmarks_html}}
+            </div>
+        </div>
+
+        <div class="footer">
+            <p>Welcome to Adapta Browser </p>
+        </div>
+    </div>
+
+    <script src="home.js"></script>
+</body>
+
+</html>
