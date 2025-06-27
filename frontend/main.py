@@ -8,6 +8,8 @@ from PyQt5.QtWebEngineWidgets import QWebEngineView
 from PyQt5.QtCore import QUrl, Qt
 from PyQt5.QtGui import QFont
 from functools import partial
+import speech_recognition as sr
+from PyQt5.QtWidgets import QMessageBox
 
 class BrowserTab(QWidget):
     def __init__(self, parent=None, is_dark_mode=False):
@@ -305,6 +307,27 @@ class MainWindow(QMainWindow):
         toolbar_layout.addWidget(self.bookmark_button)
         toolbar_layout.addWidget(self.plus_button)
         toolbar_layout.addWidget(self.menu_button)
+
+        # Add microphone button for voice commands
+        self.mic_button = QPushButton("🎤")
+        self.mic_button.setFixedSize(40, 40)
+        self.mic_button.setToolTip("Voice Command")
+        self.mic_button.setStyleSheet("""
+            QPushButton {
+                background: none;
+                border: none;
+                font-size: 20px;
+                color: #0078d4;
+                border-radius: 8px;
+            }
+            QPushButton:hover:enabled {
+                background-color: rgba(0, 120, 212, 0.08);
+            }
+        """)
+        self.mic_button.clicked.connect(self.handle_voice_command)
+        # Add mic button to toolbar (right before menu)
+        toolbar_layout = self.toolbar.layout()
+        toolbar_layout.insertWidget(toolbar_layout.count() - 1, self.mic_button)
 
         # Tab widget for multiple tabs (under toolbar)
         self.tabs = QTabWidget()
@@ -934,7 +957,7 @@ class MainWindow(QMainWindow):
         menu.addAction("🌙 Toggle Dark Mode", self.toggle_dark_mode_menu)
         menu.addSeparator()
         menu.addAction("📊 View Page Source", self.view_page_source)
-        menu.addAction("🔧 Developer Tools", self.open_dev_tools)
+        menu.addAction("🛠️ Inspect Element", self.inspect_element)
         menu.addSeparator()
         menu.addAction("📋 Bookmarks Manager", self.open_bookmarks_manager)
         menu.addAction("⚙️ Settings", self.open_settings)
@@ -945,6 +968,26 @@ class MainWindow(QMainWindow):
         button_rect = self.menu_button.geometry()
         menu_pos = self.menu_button.mapToGlobal(button_rect.bottomLeft())
         menu.exec_(menu_pos)
+
+    def inspect_element(self):
+        """Open the built-in inspector/devtools for the current page (like Inspect Element in browsers)"""
+        tab = self.current_tab()
+        if tab and tab.browser:
+            # Robust DevTools window creation for PyQt5
+            if not hasattr(tab, '_devtools_window') or tab._devtools_window is None:
+                from PyQt5.QtWebEngineWidgets import QWebEngineView
+                devtools = QWebEngineView()
+                devtools.setWindowTitle("DevTools")
+                devtools.resize(900, 600)
+                devtools.show()
+                tab._devtools_window = devtools
+                tab.browser.page().setDevToolsPage(devtools.page())
+            else:
+                tab._devtools_window.show()
+                tab._devtools_window.raise_()
+                tab._devtools_window.activateWindow()
+            # Always trigger InspectElement to highlight
+            tab.browser.page().triggerAction(tab.browser.page().InspectElement)
 
     def toggle_dark_mode_menu(self):
         """Toggle dark mode from menu"""
@@ -985,7 +1028,34 @@ class MainWindow(QMainWindow):
         QMessageBox.about(self, "About Adapta", 
                          "Adapta Browser\n\nA modern, fast browser built with PyQt5\n\nVersion 1.0")
 
-    # ...existing code...
+    def handle_voice_command(self):
+        recognizer = sr.Recognizer()
+        with sr.Microphone() as source:
+            QMessageBox.information(self, "Voice Command", "Listening... Please speak your command.")
+            try:
+                audio = recognizer.listen(source, timeout=5, phrase_time_limit=5)
+                command = recognizer.recognize_google(audio).lower()
+            except Exception as e:
+                QMessageBox.warning(self, "Voice Command", f"Could not recognize speech: {e}")
+                return
+        # Example: "open youtube tab" or "switch to github tab"
+        keywords = ["open ", "switch to ", "go to "]
+        found = False
+        for kw in keywords:
+            if command.startswith(kw):
+                tab_name = command[len(kw):].strip()
+                for i in range(self.tabs.count()):
+                    tab = self.tabs.widget(i)
+                    title = tab.browser.title().lower() if tab.browser.title() else ""
+                    url = tab.browser.url().toString().lower()
+                    if tab_name in title or tab_name in url:
+                        self.tabs.setCurrentIndex(i)
+                        QMessageBox.information(self, "Voice Command", f"Switched to tab: {tab.browser.title()}")
+                        found = True
+                        break
+                break
+        if not found:
+            QMessageBox.information(self, "Voice Command", f"No tab found matching: {command}")
 if __name__ == "__main__":
     app = QApplication(sys.argv)
     window = MainWindow()
