@@ -570,13 +570,27 @@ class MainWindow(QMainWindow):
         # Bookmarks HTML
         bookmarks_html = ""
         if self.bookmarks:
-            bookmarks_html += '<div class="bookmarks-grid">'
             for bm in self.bookmarks:
+                # Extract domain for favicon/logo
+                import urllib.parse
+                parsed_url = urllib.parse.urlparse(bm["url"])
+                domain = parsed_url.netloc.lower()
+                
+                # Generate logo/favicon URL
+                favicon_url = f"https://www.google.com/s2/favicons?domain={domain}&sz=64"
+                
+                # Get first letter for fallback
+                first_letter = bm["title"][0].upper() if bm["title"] else "?"
+                
                 bookmarks_html += f'''
-                <div class="bookmark-item" onclick="window.location.href='{bm["url"]}'">
-                    <div class="bookmark-name">{bm["title"][:20] + ("..." if len(bm["title"]) > 20 else "")}</div>
+                <div class="bookmark-container">
+                    <div class="bookmark-item" onclick="window.location.href='{bm["url"]}'">
+                        <div class="bookmark-logo" style="background-image: url('{favicon_url}'); background-size: cover; background-position: center;">
+                            <span style="display: none;">{first_letter}</span>
+                        </div>
+                    </div>
+                    <div class="bookmark-name">{bm["title"][:15] + ("..." if len(bm["title"]) > 15 else "")}</div>
                 </div>'''
-            bookmarks_html += '</div>'
         # Replace placeholders
         html_content = html_template.replace("{{current_time}}", current_time)
         html_content = html_content.replace("{{current_date}}", current_date)
@@ -593,11 +607,27 @@ class MainWindow(QMainWindow):
         text_color = "#e0e0e0" if self.is_dark_mode else "#1d1d1f"
         bookmarks_html = ""
         if self.bookmarks:
-            bookmarks_html += '<div class="bookmarks-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 20px; max-width: 960px; margin: 0 auto; margin-top: 32px;">'
+            bookmarks_html += '<div style="display: flex; flex-wrap: wrap; justify-content: center; gap: 20px; max-width: 960px; margin: 0 auto; margin-top: 32px;">'
             for bm in self.bookmarks:
+                # Extract domain for favicon/logo
+                import urllib.parse
+                parsed_url = urllib.parse.urlparse(bm["url"])
+                domain = parsed_url.netloc.lower()
+                
+                # Generate logo/favicon URL
+                favicon_url = f"https://www.google.com/s2/favicons?domain={domain}&sz=64"
+                
+                # Get first letter for fallback
+                first_letter = bm["title"][0].upper() if bm["title"] else "?"
+                
                 bookmarks_html += f'''
-                <div style="aspect-ratio: 1; border: 1px solid rgba(255,255,255,0.2); border-radius: 20px; padding: 20px; text-align: center; cursor: pointer; background: rgba(45,45,45,0.7); backdrop-filter: blur(10px); display: flex; flex-direction: column; justify-content: center; align-items: center; transition: all 0.3s ease; box-shadow: 0 4px 20px rgba(0,0,0,0.1);" onclick="window.location.href='{bm["url"]}'">
-                    <div style="font-size: 0.9rem; font-weight: 500; color: inherit;">{bm["title"][:20] + ("..." if len(bm["title"]) > 20 else "")}</div>
+                <div style="display: flex; flex-direction: column; align-items: center; margin: 0 10px;">
+                    <div style="width: 100px; height: 100px; border: 1px solid rgba(255,255,255,0.2); border-radius: 20px; padding: 10px; text-align: center; cursor: pointer; background: rgba(45,45,45,0.7); backdrop-filter: blur(10px); display: flex; flex-direction: column; justify-content: center; align-items: center; transition: all 0.3s ease; box-shadow: 0 4px 20px rgba(0,0,0,0.1); margin-bottom: 8px;" onclick="window.location.href='{bm["url"]}'">
+                        <div style="width: 50px; height: 50px; border-radius: 12px; background-image: url('{favicon_url}'); background-size: cover; background-position: center; background-color: #fff; display: flex; align-items: center; justify-content: center; font-size: 24px; font-weight: bold; color: #333;">
+                            <span style="display: none;">{first_letter}</span>
+                        </div>
+                    </div>
+                    <div style="font-size: 0.85rem; font-weight: 500; text-align: center; max-width: 100px; line-height: 1.2; color: inherit;">{bm["title"][:15] + ("..." if len(bm["title"]) > 15 else "")}</div>
                 </div>'''
             bookmarks_html += '</div>'
         return f"""
