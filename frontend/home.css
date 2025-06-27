@@ -24,19 +24,6 @@ body {
     margin-bottom: 60px;
 }
 
-.time {
-    font-size: 4rem;
-    font-weight: 300;
-    margin-bottom: 10px;
-}
-
-.date {
-    font-size: 1.2rem;
-    margin-bottom: 40px;
-}
-
-
-
 .bookmarks-section {
     margin-bottom: 40px;
 }
@@ -49,25 +36,46 @@ body {
 
 .bookmarks-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
     gap: 20px;
     max-width: 960px;
     margin: 0 auto;
 }
 
 .bookmark-item {
+    aspect-ratio: 1;
     border: 1px solid;
-    border-radius: 12px;
+    border-radius: 20px;
     padding: 20px;
     text-align: center;
     cursor: pointer;
-    transition: all 0.2s ease;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    transition: all 0.3s ease;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    position: relative;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+}
+
+.bookmark-item::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    backdrop-filter: blur(15px);
+    -webkit-backdrop-filter: blur(15px);
+    z-index: -1;
 }
 
 .bookmark-item:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    transform: translateY(-4px) scale(1.02);
+    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.2);
 }
 
 .bookmark-icon {
@@ -111,12 +119,13 @@ body:not(.dark) .section-title {
 }
 
 body:not(.dark) .bookmark-item {
-    background: #ffffff;
-    border-color: #e5e5e7;
+    background: rgba(255, 255, 255, 0.7);
+    border-color: rgba(255, 255, 255, 0.3);
 }
 
 body:not(.dark) .bookmark-item:hover {
-    background: #f0f0f0;
+    background: rgba(255, 255, 255, 0.9);
+    border-color: rgba(255, 255, 255, 0.5);
 }
 
 body:not(.dark) .bookmark-name {
@@ -142,12 +151,13 @@ body.dark .section-title {
 }
 
 body.dark .bookmark-item {
-    background: #2d2d2d;
-    border-color: #404040;
+    background: rgba(45, 45, 45, 0.7);
+    border-color: rgba(255, 255, 255, 0.1);
 }
 
 body.dark .bookmark-item:hover {
-    background: #404040;
+    background: rgba(64, 64, 64, 0.8);
+    border-color: rgba(255, 255, 255, 0.2);
 }
 
 body.dark .bookmark-name {
@@ -170,12 +180,13 @@ body.dark .footer {
     }
 
     .bookmarks-grid {
-        grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+        grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
         gap: 15px;
     }
 
     .bookmark-item {
         padding: 15px;
+        border-radius: 16px;
     }
 
     .bookmark-icon {

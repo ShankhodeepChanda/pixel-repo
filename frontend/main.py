@@ -29,9 +29,7 @@ class MainWindow(QMainWindow):
         self.setMinimumSize(800, 600)  # Set minimum size
         self.showMaximized()  # Start maximized to cover full screen
         
-        # Alternative: Use this for true fullscreen
-        # self.showFullScreen()
-
+      
         # History management
         self.history = []
         self.current_index = -1
@@ -49,11 +47,11 @@ class MainWindow(QMainWindow):
 
         # Create toolbar
         toolbar = QWidget()
-        toolbar.setFixedHeight(48)  # Set fixed height for toolbar
+        toolbar.setFixedHeight(60)  # Increased height for larger elements
         toolbar.setObjectName("toolbar")  # Add object name for styling
         toolbar_layout = QHBoxLayout(toolbar)
-        toolbar_layout.setContentsMargins(12, 8, 12, 8)
-        toolbar_layout.setSpacing(10)
+        toolbar_layout.setContentsMargins(16, 10, 16, 10)  # Increased margins
+        toolbar_layout.setSpacing(15)  # Increased spacing between elements
 
         # Store reference to toolbar for styling
         self.toolbar = toolbar
@@ -63,17 +61,16 @@ class MainWindow(QMainWindow):
         self.forward_button = QPushButton("→")
         self.reload_button = QPushButton("⟳")
         self.home_button = QPushButton("🏠")
-        self.dark_mode_button = QPushButton("🌙")
         
-        for btn in [self.back_button, self.forward_button, self.reload_button, self.home_button, self.dark_mode_button]:
-            btn.setFixedSize(32, 32)
+        for btn in [self.back_button, self.forward_button, self.reload_button, self.home_button]:
+            btn.setFixedSize(40, 40)  # Increased size
             btn.setStyleSheet("""
                 QPushButton {
                     background: none;
                     border: none;
-                    font-size: 18px;
+                    font-size: 20px;
                     color: #555;
-                    border-radius: 6px;
+                    border-radius: 8px;
                 }
                 QPushButton:hover:enabled {
                     background-color: rgba(0, 0, 0, 0.08);
@@ -88,20 +85,21 @@ class MainWindow(QMainWindow):
         self.forward_button.setToolTip("Forward")
         self.reload_button.setToolTip("Reload")
         self.home_button.setToolTip("Home")
-        self.dark_mode_button.setToolTip("Toggle Dark Mode")
 
         # Dark mode setup
         self.is_dark_mode = False
 
-        # URL input
+        # URL input - centered with limited width
         self.url_input = QLineEdit()
         self.url_input.setPlaceholderText("Search or enter website name")
+        self.url_input.setFixedWidth(600)  # Fixed width for centering
+        self.url_input.setFixedHeight(36)  # Fixed height
         self.url_input.setStyleSheet("""
             QLineEdit {
-                padding: 8px 16px;
-                font-size: 14px;
+                padding: 8px 30px;
+                font-size: 28px;
                 border: 1px solid #ccc;
-                border-radius: 20px;
+                border-radius: 18px;
                 background-color: #fdfdfd;
             }
             QLineEdit:focus {
@@ -110,50 +108,77 @@ class MainWindow(QMainWindow):
             }
         """)
 
-        # Add widgets to toolbar
+        # Add widgets to toolbar with improved layout
+        # Left side - navigation buttons with increased spacing
         toolbar_layout.addWidget(self.back_button)
+        toolbar_layout.addSpacing(8)  # Extra space after back button
         toolbar_layout.addWidget(self.forward_button)
+        toolbar_layout.addSpacing(20)  # Larger space before reload
         toolbar_layout.addWidget(self.reload_button)
+        toolbar_layout.addSpacing(8)  # Space after reload
         toolbar_layout.addWidget(self.home_button)
-        # Remove favicon label from toolbar
-        # toolbar_layout.addWidget(self.favicon_label)
+        
+        # Center the search bar
+        toolbar_layout.addStretch()  # Push search bar to center
         toolbar_layout.addWidget(self.url_input)
-        # Add plus button after search bar (define before using)
-        self.plus_button = QPushButton("＋")
-        self.plus_button.setFixedSize(32, 32)
-        self.plus_button.setStyleSheet("""
-            QPushButton {
-                background: none;
-                border: none;
-                font-size: 22px;
-                color: #555;
-                border-radius: 6px;
-            }
-            QPushButton:hover:enabled {
-                background-color: rgba(0, 0, 0, 0.08);
-            }
-        """)
-        self.plus_button.setToolTip("New Tab")
-        # Add bookmark (star) button to the right of search bar
+        toolbar_layout.addStretch()  # Push remaining elements to the right
+        
+        # Right side buttons
+        # Add bookmark (star) button
         self.bookmark_button = QPushButton()
-        self.bookmark_button.setFixedSize(32, 32)
+        self.bookmark_button.setFixedSize(40, 40)  # Increased size
         self.bookmark_button.setToolTip("Bookmark this page")
         self.bookmark_button.setStyleSheet("""
             QPushButton {
                 background: none;
                 border: none;
-                font-size: 20px;
+                font-size: 18px;
                 color: #e0c200;
-                border-radius: 6px;
+                border-radius: 8px;
             }
             QPushButton:hover:enabled {
                 background-color: rgba(255, 215, 0, 0.08);
             }
         """)
         self.bookmark_button.setText("☆")  # Outline star
+        
+        # Add plus button after search bar
+        self.plus_button = QPushButton("＋")
+        self.plus_button.setFixedSize(40, 40)  # Increased size
+        self.plus_button.setStyleSheet("""
+            QPushButton {
+                background: none;
+                border: none;
+                font-size: 20px;
+                color: #555;
+                border-radius: 8px;
+            }
+            QPushButton:hover:enabled {
+                background-color: rgba(0, 0, 0, 0.08);
+            }
+        """)
+        self.plus_button.setToolTip("New Tab")
+        
+        # Add kebab menu button
+        self.menu_button = QPushButton("⋮")
+        self.menu_button.setFixedSize(40, 40)
+        self.menu_button.setStyleSheet("""
+            QPushButton {
+                background: none;
+                border: none;
+                font-size: 20px;
+                color: #555;
+                border-radius: 8px;
+            }
+            QPushButton:hover:enabled {
+                background-color: rgba(0, 0, 0, 0.08);
+            }
+        """)
+        self.menu_button.setToolTip("Menu")
+        
         toolbar_layout.addWidget(self.bookmark_button)
         toolbar_layout.addWidget(self.plus_button)
-        toolbar_layout.addWidget(self.dark_mode_button)
+        toolbar_layout.addWidget(self.menu_button)
 
         # Tab widget for multiple tabs (under toolbar)
         self.tabs = QTabWidget()
@@ -172,9 +197,9 @@ class MainWindow(QMainWindow):
         self.forward_button.clicked.connect(self.go_forward)
         self.reload_button.clicked.connect(self.reload_page)
         self.home_button.clicked.connect(self.go_home)
-        self.dark_mode_button.clicked.connect(self.toggle_dark_mode)
         self.plus_button.clicked.connect(self.add_new_tab)
         self.bookmark_button.clicked.connect(self.toggle_bookmark)
+        self.menu_button.clicked.connect(self.show_menu)
 
         self.apply_theme()
 
@@ -241,9 +266,9 @@ class MainWindow(QMainWindow):
             url_input_style = """
                 QLineEdit {
                     padding: 8px 16px;
-                    font-size: 14px;
+                    font-size: 16px;
                     border: 1px solid #555;
-                    border-radius: 20px;
+                    border-radius: 18px;
                     background-color: #404040;
                     color: #e0e0e0;
                 }
@@ -284,9 +309,9 @@ class MainWindow(QMainWindow):
             url_input_style = """
                 QLineEdit {
                     padding: 8px 16px;
-                    font-size: 14px;
+                    font-size: 16px;
                     border: 1px solid #ccc;
-                    border-radius: 20px;
+                    border-radius: 18px;
                     background-color: #fdfdfd;
                     color: #333;
                 }
@@ -301,12 +326,15 @@ class MainWindow(QMainWindow):
         
         # Apply styles to widgets
         self.toolbar.setStyleSheet(toolbar_style)  # Apply to toolbar
-        for btn in [self.back_button, self.forward_button, self.reload_button, self.home_button, self.dark_mode_button]:
+        for btn in [self.back_button, self.forward_button, self.reload_button, self.home_button]:
             btn.setStyleSheet(button_style)
         
-        # Apply plus button style
-        plus_button_style = button_style.replace("font-size: 18px;", "font-size: 22px;")
+        # Apply button styles with appropriate sizes
+        plus_button_style = button_style.replace("font-size: 18px;", "font-size: 20px;")
         self.plus_button.setStyleSheet(plus_button_style)
+        
+        menu_button_style = button_style.replace("font-size: 18px;", "font-size: 20px;")
+        self.menu_button.setStyleSheet(menu_button_style)
         
         self.url_input.setStyleSheet(url_input_style)
         
@@ -358,28 +386,6 @@ class MainWindow(QMainWindow):
         
         self.tabs.setStyleSheet(tab_style)
 
-    def toggle_dark_mode(self):
-        """Toggle between light and dark mode"""
-        self.is_dark_mode = not self.is_dark_mode
-        
-        # Update button icon
-        if self.is_dark_mode:
-            self.dark_mode_button.setText("☀️")  # Sun icon for light mode
-            self.dark_mode_button.setToolTip("Switch to Light Mode")
-        else:
-            self.dark_mode_button.setText("🌙")  # Moon icon for dark mode
-            self.dark_mode_button.setToolTip("Switch to Dark Mode")
-        
-        self.apply_theme()
-        
-        # Refresh home page for all tabs that are currently showing home page
-        for i in range(self.tabs.count()):
-            tab = self.tabs.widget(i)
-            if tab and tab.browser:
-                current_url = tab.browser.url().toString()
-                if "adapta_home.html" in current_url or "adapta://home" in current_url:
-                    self.go_home(tab=tab)
-
     def create_home_page_html(self):
         """Create Safari-style home page HTML using external files and bookmarks"""
         import datetime
@@ -399,11 +405,12 @@ class MainWindow(QMainWindow):
         # Bookmarks HTML
         bookmarks_html = ""
         if self.bookmarks:
-            bookmarks_html += '<div class="bookmarks-grid" style="display: flex; flex-wrap: wrap; justify-content: center; gap: 18px; margin-top: 32px;">'
+            bookmarks_html += '<div class="bookmarks-grid">'
             for bm in self.bookmarks:
-                bookmarks_html += f'<a href="{bm["url"]}" style="display: block; min-width: 120px; max-width: 200px; padding: 18px 16px; background: rgba(0,0,0,0.04); border-radius: 16px; text-decoration: none; color: inherit; box-shadow: 0 2px 8px rgba(0,0,0,0.04); text-align: center; font-size: 1.1em;">'
-                bookmarks_html += f'<div style="font-size: 1.5em; margin-bottom: 6px;">🔖</div>'
-                bookmarks_html += f'{bm["title"][:32] + ("..." if len(bm["title"]) > 32 else "")}<br><span style="font-size:0.85em;color:#888;">{bm["url"]}</span></a>'
+                bookmarks_html += f'''
+                <div class="bookmark-item" onclick="window.location.href='{bm["url"]}'">
+                    <div class="bookmark-name">{bm["title"][:20] + ("..." if len(bm["title"]) > 20 else "")}</div>
+                </div>'''
             bookmarks_html += '</div>'
         # Replace placeholders
         html_content = html_template.replace("{{current_time}}", current_time)
@@ -421,11 +428,12 @@ class MainWindow(QMainWindow):
         text_color = "#e0e0e0" if self.is_dark_mode else "#1d1d1f"
         bookmarks_html = ""
         if self.bookmarks:
-            bookmarks_html += '<div class="bookmarks-grid" style="display: flex; flex-wrap: wrap; justify-content: center; gap: 18px; margin-top: 32px;">'
+            bookmarks_html += '<div class="bookmarks-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 20px; max-width: 960px; margin: 0 auto; margin-top: 32px;">'
             for bm in self.bookmarks:
-                bookmarks_html += f'<a href="{bm["url"]}" style="display: block; min-width: 120px; max-width: 200px; padding: 18px 16px; background: rgba(0,0,0,0.04); border-radius: 16px; text-decoration: none; color: inherit; box-shadow: 0 2px 8px rgba(0,0,0,0.04); text-align: center; font-size: 1.1em;">'
-                bookmarks_html += f'<div style="font-size: 1.5em; margin-bottom: 6px;">🔖</div>'
-                bookmarks_html += f'{bm["title"][:32] + ("..." if len(bm["title"]) > 32 else "")}<br><span style="font-size:0.85em;color:#888;">{bm["url"]}</span></a>'
+                bookmarks_html += f'''
+                <div style="aspect-ratio: 1; border: 1px solid rgba(255,255,255,0.2); border-radius: 20px; padding: 20px; text-align: center; cursor: pointer; background: rgba(45,45,45,0.7); backdrop-filter: blur(10px); display: flex; flex-direction: column; justify-content: center; align-items: center; transition: all 0.3s ease; box-shadow: 0 4px 20px rgba(0,0,0,0.1);" onclick="window.location.href='{bm["url"]}'">
+                    <div style="font-size: 0.9rem; font-weight: 500; color: inherit;">{bm["title"][:20] + ("..." if len(bm["title"]) > 20 else "")}</div>
+                </div>'''
             bookmarks_html += '</div>'
         return f"""
         <!DOCTYPE html>
@@ -660,16 +668,30 @@ class MainWindow(QMainWindow):
                     self.go_home(tab=tab)
 
     def load_bookmarks(self):
-        """Load bookmarks from a JSON file if it exists"""
+        """Load bookmarks from a JSON file if it exists, otherwise use defaults"""
         import os
+        
+        # Default bookmarks if no file exists
+        default_bookmarks = [
+            {
+                "url": "https://www.google.com/",
+                "title": "Google"
+            }
+        ]
+        
         try:
             bookmarks_path = os.path.join(os.path.dirname(__file__), "bookmarks.json")
             if os.path.exists(bookmarks_path):
                 with open(bookmarks_path, "r", encoding="utf-8") as f:
                     self.bookmarks = json.load(f)
+            else:
+                # No file exists, use defaults and create the file
+                self.bookmarks = default_bookmarks.copy()
+                self.save_bookmarks()  # Create the file with defaults
         except Exception as e:
             print(f"Error loading bookmarks: {e}")
-            self.bookmarks = []
+            # Fallback to defaults if there's an error
+            self.bookmarks = default_bookmarks.copy()
 
     def save_bookmarks(self):
         """Save bookmarks to a JSON file"""
@@ -694,6 +716,87 @@ class MainWindow(QMainWindow):
         else:
             download.cancel()
 
+    def show_menu(self):
+        """Show the kebab menu with browser options"""
+        from PyQt5.QtWidgets import QMenu
+        
+        menu = QMenu(self)
+        menu.setStyleSheet("""
+            QMenu {
+                background-color: #ffffff;
+                border: 1px solid #ddd;
+                border-radius: 8px;
+                padding: 4px;
+                font-size: 14px;
+            }
+            QMenu::item {
+                padding: 8px 16px;
+                border-radius: 4px;
+            }
+            QMenu::item:hover {
+                background-color: #f0f0f0;
+            }
+            QMenu::item:selected {
+                background-color: #e8e8e8;
+            }
+        """)
+        
+        # Add menu actions
+        menu.addAction("🌙 Toggle Dark Mode", self.toggle_dark_mode_menu)
+        menu.addSeparator()
+        menu.addAction("📊 View Page Source", self.view_page_source)
+        menu.addAction("🔧 Developer Tools", self.open_dev_tools)
+        menu.addSeparator()
+        menu.addAction("📋 Bookmarks Manager", self.open_bookmarks_manager)
+        menu.addAction("⚙️ Settings", self.open_settings)
+        menu.addSeparator()
+        menu.addAction("❓ About Adapta", self.show_about)
+        
+        # Show menu at button position
+        button_rect = self.menu_button.geometry()
+        menu_pos = self.menu_button.mapToGlobal(button_rect.bottomLeft())
+        menu.exec_(menu_pos)
+
+    def toggle_dark_mode_menu(self):
+        """Toggle dark mode from menu"""
+        self.is_dark_mode = not self.is_dark_mode
+        self.apply_theme()
+        
+        # Refresh home page for all tabs that are currently showing home page
+        for i in range(self.tabs.count()):
+            tab = self.tabs.widget(i)
+            if tab and tab.browser:
+                current_url = tab.browser.url().toString()
+                if "adapta_home.html" in current_url or "adapta://home" in current_url:
+                    self.go_home(tab=tab)
+
+    def view_page_source(self):
+        """View page source (placeholder)"""
+        from PyQt5.QtWidgets import QMessageBox
+        QMessageBox.information(self, "Page Source", "Page source viewer coming soon!")
+
+    def open_dev_tools(self):
+        """Open developer tools (placeholder)"""
+        from PyQt5.QtWidgets import QMessageBox
+        QMessageBox.information(self, "Developer Tools", "Developer tools coming soon!")
+
+    def open_bookmarks_manager(self):
+        """Open bookmarks manager (placeholder)"""
+        from PyQt5.QtWidgets import QMessageBox
+        QMessageBox.information(self, "Bookmarks", "Bookmarks manager coming soon!")
+
+    def open_settings(self):
+        """Open settings (placeholder)"""
+        from PyQt5.QtWidgets import QMessageBox
+        QMessageBox.information(self, "Settings", "Settings panel coming soon!")
+
+    def show_about(self):
+        """Show about dialog"""
+        from PyQt5.QtWidgets import QMessageBox
+        QMessageBox.about(self, "About Adapta", 
+                         "Adapta Browser\n\nA modern, fast browser built with PyQt5\n\nVersion 1.0")
+
+    # ...existing code...
 if __name__ == "__main__":
     app = QApplication(sys.argv)
     window = MainWindow()
