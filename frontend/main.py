@@ -183,6 +183,8 @@ class MainWindow(QMainWindow):
         idx = self.tabs.addTab(tab, "New Tab")
         self.tabs.setCurrentIndex(idx)
         tab.browser.urlChanged.connect(self.url_changed)
+        # Connect download handler to the browser's profile
+        tab.browser.page().profile().downloadRequested.connect(self.handle_download_requested)
         if url:
             tab.browser.load(QUrl(url))
         else:
@@ -678,6 +680,19 @@ class MainWindow(QMainWindow):
                 json.dump(self.bookmarks, f, ensure_ascii=False, indent=2)
         except Exception as e:
             print(f"Error saving bookmarks: {e}")
+
+    def handle_download_requested(self, download):
+        """Handle file download requests"""
+        from PyQt5.QtWidgets import QFileDialog, QMessageBox
+        suggested_path = download.path()
+        # Ask user where to save the file
+        save_path, _ = QFileDialog.getSaveFileName(self, "Save File", suggested_path)
+        if save_path:
+            download.setPath(save_path)
+            download.accept()
+            QMessageBox.information(self, "Download Started", f"Downloading to: {save_path}")
+        else:
+            download.cancel()
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
