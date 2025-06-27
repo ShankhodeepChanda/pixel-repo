@@ -311,7 +311,7 @@ class MainWindow(QMainWindow):
         # Add microphone button for voice commands
         self.mic_button = QPushButton("🎤")
         self.mic_button.setFixedSize(40, 40)
-        self.mic_button.setToolTip("Voice Command")
+        self.mic_button.setToolTip("Voice Command - Click to speak")
         self.mic_button.setStyleSheet("""
             QPushButton {
                 background: none;
@@ -319,9 +319,14 @@ class MainWindow(QMainWindow):
                 font-size: 20px;
                 color: #0078d4;
                 border-radius: 8px;
+                transition: all 0.2s ease;
             }
             QPushButton:hover:enabled {
                 background-color: rgba(0, 120, 212, 0.08);
+                transform: scale(1.1);
+            }
+            QPushButton:pressed {
+                background-color: rgba(0, 120, 212, 0.2);
             }
         """)
         self.mic_button.clicked.connect(self.handle_voice_command)
@@ -1046,11 +1051,25 @@ class MainWindow(QMainWindow):
                          "Adapta Browser\n\nA modern, fast browser built with PyQt5\n\nVersion 1.0")
 
     def handle_voice_command(self):
+        """Handle voice commands for browser navigation and control"""
         recognizer = sr.Recognizer()
-        with sr.Microphone() as source:
-            QMessageBox.information(self, "Voice Command", "Listening... Please speak your command.")
-            try:
-                audio = recognizer.listen(source, timeout=5, phrase_time_limit=5)
+        
+        # Show listening indicator
+        self.mic_button.setText("🔴")  # Red dot to indicate listening
+        self.mic_button.setToolTip("Listening...")
+        
+        try:
+            with sr.Microphone() as source:
+                # Adjust for ambient noise
+                recognizer.adjust_for_ambient_noise(source, duration=0.5)
+                
+                # Show listening dialog
+                QMessageBox.information(self, "Voice Command", "Listening... Please speak your command.\n\nExample commands:\n• 'Go to YouTube'\n• 'Open new tab'\n• 'Go back'\n• 'Reload page'\n• 'Switch to [tab name]'")
+                
+                # Listen for audio
+                audio = recognizer.listen(source, timeout=8, phrase_time_limit=5)
+                
+                # Recognize speech
                 command = recognizer.recognize_google(audio).lower()
             except Exception as e:
                 QMessageBox.warning(self, "Voice Command", f"Could not recognize speech: {e}")
@@ -1073,54 +1092,6 @@ class MainWindow(QMainWindow):
                 break
         if not found:
             QMessageBox.information(self, "Voice Command", f"No tab found matching: {command}")
-
-    def set_home_background(self):
-        """Let user pick an image for the home page background and save it"""
-        from PyQt5.QtWidgets import QFileDialog, QMessageBox
-        import shutil
-        import os
-        # Let user pick an image
-        file_path, _ = QFileDialog.getOpenFileName(self, "Select Background Image", "", "Images (*.png *.jpg *.jpeg *.bmp)")
-        if not file_path:
-            return
-        # Copy image to a known location in the app directory
-        app_dir = os.path.dirname(__file__)
-        bg_dir = os.path.join(app_dir, "home_bg")
-        os.makedirs(bg_dir, exist_ok=True)
-        ext = os.path.splitext(file_path)[1]
-        dest_path = os.path.join(bg_dir, "background" + ext)
-        try:
-            shutil.copy2(file_path, dest_path)
-            # Save path in config
-            with open(os.path.join(app_dir, "home_bg.json"), "w", encoding="utf-8") as f:
-                json.dump({"bg_path": dest_path}, f)
-            QMessageBox.information(self, "Home Background", "Background image set! Reloading home page...")
-            self.update_home_background_all_tabs()
-        except Exception as e:
-            QMessageBox.warning(self, "Home Background", f"Failed to set background: {e}")
-
-    def get_home_background_path(self):
-        import os
-        app_dir = os.path.dirname(__file__)
-        config_path = os.path.join(app_dir, "home_bg.json")
-        if os.path.exists(config_path):
-            try:
-                with open(config_path, "r", encoding="utf-8") as f:
-                    data = json.load(f)
-                if os.path.exists(data.get("bg_path", "")):
-                    return data["bg_path"]
-            except Exception:
-                pass
-        return None
-
-    def update_home_background_all_tabs(self):
-        for i in range(self.tabs.count()):
-            tab = self.tabs.widget(i)
-            if tab and tab.browser:
-                current_url = tab.browser.url().toString()
-                if "adapta_home.html" in current_url or "adapta://home" in current_url:
-                    self.go_home(tab=tab)
-
 if __name__ == "__main__":
     app = QApplication(sys.argv)
     window = MainWindow()
