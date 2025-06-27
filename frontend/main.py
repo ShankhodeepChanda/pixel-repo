@@ -311,7 +311,7 @@ class MainWindow(QMainWindow):
         # Add microphone button for voice commands
         self.mic_button = QPushButton("🎤")
         self.mic_button.setFixedSize(40, 40)
-        self.mic_button.setToolTip("Voice Command")
+        self.mic_button.setToolTip("Voice Command - Click to speak")
         self.mic_button.setStyleSheet("""
             QPushButton {
                 background: none;
@@ -319,9 +319,14 @@ class MainWindow(QMainWindow):
                 font-size: 20px;
                 color: #0078d4;
                 border-radius: 8px;
+                transition: all 0.2s ease;
             }
             QPushButton:hover:enabled {
                 background-color: rgba(0, 120, 212, 0.08);
+                transform: scale(1.1);
+            }
+            QPushButton:pressed {
+                background-color: rgba(0, 120, 212, 0.2);
             }
         """)
         self.mic_button.clicked.connect(self.handle_voice_command)
@@ -1029,33 +1034,153 @@ class MainWindow(QMainWindow):
                          "Adapta Browser\n\nA modern, fast browser built with PyQt5\n\nVersion 1.0")
 
     def handle_voice_command(self):
+        """Handle voice commands for browser navigation and control"""
         recognizer = sr.Recognizer()
-        with sr.Microphone() as source:
-            QMessageBox.information(self, "Voice Command", "Listening... Please speak your command.")
-            try:
-                audio = recognizer.listen(source, timeout=5, phrase_time_limit=5)
+        
+        # Show listening indicator
+        self.mic_button.setText("🔴")  # Red dot to indicate listening
+        self.mic_button.setToolTip("Listening...")
+        
+        try:
+            with sr.Microphone() as source:
+                # Adjust for ambient noise
+                recognizer.adjust_for_ambient_noise(source, duration=0.5)
+                
+                # Show listening dialog
+                QMessageBox.information(self, "Voice Command", "Listening... Please speak your command.\n\nExample commands:\n• 'Go to YouTube'\n• 'Open new tab'\n• 'Go back'\n• 'Reload page'\n• 'Switch to [tab name]'")
+                
+                # Listen for audio
+                audio = recognizer.listen(source, timeout=8, phrase_time_limit=5)
+                
+                # Recognize speech
                 command = recognizer.recognize_google(audio).lower()
-            except Exception as e:
-                QMessageBox.warning(self, "Voice Command", f"Could not recognize speech: {e}")
+                print(f"Voice command received: {command}")
+                
+                # Process the command
+                self.process_voice_command(command)
+                
+        except sr.WaitTimeoutError:
+            QMessageBox.warning(self, "Voice Command", "No speech detected. Please try again.")
+        except sr.UnknownValueError:
+            QMessageBox.warning(self, "Voice Command", "Could not understand the command. Please try again.")
+        except sr.RequestError as e:
+            QMessageBox.warning(self, "Voice Command", f"Speech recognition service error: {e}")
+        except Exception as e:
+            QMessageBox.warning(self, "Voice Command", f"An error occurred: {e}")
+        finally:
+            # Reset microphone button
+            self.mic_button.setText("🎤")
+            self.mic_button.setToolTip("Voice Command")
+
+    def process_voice_command(self, command):
+        """Process and execute voice commands"""
+        command = command.strip().lower()
+        
+        # Navigation commands
+        if any(phrase in command for phrase in ["go to", "open", "navigate to", "visit"]):
+            # Extract the site name/URL
+            for phrase in ["go to", "open", "navigate to", "visit"]:
+                if phrase in command:
+                    site = command.split(phrase, 1)[1].strip()
+                    if site:
+                        # Handle common site shortcuts
+                        shortcuts = {
+                            "youtube": "https://www.youtube.com",
+                            "google": "https://www.google.com",
+                            "facebook": "https://www.facebook.com",
+                            "twitter": "https://www.twitter.com",
+                            "instagram": "https://www.instagram.com",
+                            "reddit": "https://www.reddit.com",
+                            "wikipedia": "https://www.wikipedia.org",
+                            "github": "https://www.github.com"
+                        }
+                        
+                        url = shortcuts.get(site, site)
+                        self.url_input.setText(url)
+                        self.navigate_to_url()
+                        QMessageBox.information(self, "Voice Command", f"Navigating to: {site}")
+                        return
+        
+        # Tab management commands
+        elif "new tab" in command or "open tab" in command:
+            self.add_new_tab()
+            QMessageBox.information(self, "Voice Command", "New tab opened")
+            return
+            
+        elif "close tab" in command:
+            if self.tabs.count() > 1:
+                self.close_tab(self.tabs.currentIndex())
+                QMessageBox.information(self, "Voice Command", "Tab closed")
+            else:
+                QMessageBox.information(self, "Voice Command", "Cannot close the last tab")
+            return
+            
+        elif any(phrase in command for phrase in ["switch to", "go to tab"]):
+            # Switch to specific tab
+            for phrase in ["switch to", "go to tab"]:
+                if phrase in command:
+                    tab_name = command.split(phrase, 1)[1].strip()
+                    found = False
+                    for i in range(self.tabs.count()):
+                        tab = self.tabs.widget(i)
+                        if tab and tab.browser:
+                            title = tab.browser.title().lower() if tab.browser.title() else ""
+                            url = tab.browser.url().toString().lower()
+                            if tab_name in title or tab_name in url:
+                                self.tabs.setCurrentIndex(i)
+                                QMessageBox.information(self, "Voice Command", f"Switched to: {tab.browser.title()}")
+                                found = True
+                                break
+                    if not found:
+                        QMessageBox.information(self, "Voice Command", f"No tab found matching: {tab_name}")
+                    return
+        
+        # Navigation commands
+        elif "go back" in command or "back" in command:
+            self.go_back()
+            QMessageBox.information(self, "Voice Command", "Going back")
+            return
+            
+        elif "go forward" in command or "forward" in command:
+            self.go_forward()
+            QMessageBox.information(self, "Voice Command", "Going forward")
+            return
+            
+        elif "reload" in command or "refresh" in command:
+            self.reload_page()
+            QMessageBox.information(self, "Voice Command", "Page reloaded")
+            return
+            
+        elif "home" in command or "go home" in command:
+            self.go_home()
+            QMessageBox.information(self, "Voice Command", "Going to home page")
+            return
+        
+        # Bookmark commands
+        elif "bookmark" in command or "add bookmark" in command:
+            self.toggle_bookmark()
+            QMessageBox.information(self, "Voice Command", "Bookmark toggled")
+            return
+            
+        # Theme commands
+        elif "dark mode" in command or "toggle dark mode" in command:
+            self.toggle_dark_mode_menu()
+            mode = "dark" if self.is_dark_mode else "light"
+            QMessageBox.information(self, "Voice Command", f"Switched to {mode} mode")
+            return
+        
+        # Search commands
+        elif "search for" in command:
+            search_term = command.split("search for", 1)[1].strip()
+            if search_term:
+                search_url = f"https://www.google.com/search?q={search_term.replace(' ', '+')}"
+                self.url_input.setText(search_url)
+                self.navigate_to_url()
+                QMessageBox.information(self, "Voice Command", f"Searching for: {search_term}")
                 return
-        # Example: "open youtube tab" or "switch to github tab"
-        keywords = ["open ", "switch to ", "go to "]
-        found = False
-        for kw in keywords:
-            if command.startswith(kw):
-                tab_name = command[len(kw):].strip()
-                for i in range(self.tabs.count()):
-                    tab = self.tabs.widget(i)
-                    title = tab.browser.title().lower() if tab.browser.title() else ""
-                    url = tab.browser.url().toString().lower()
-                    if tab_name in title or tab_name in url:
-                        self.tabs.setCurrentIndex(i)
-                        QMessageBox.information(self, "Voice Command", f"Switched to tab: {tab.browser.title()}")
-                        found = True
-                        break
-                break
-        if not found:
-            QMessageBox.information(self, "Voice Command", f"No tab found matching: {command}")
+        
+        # If no command matched
+        QMessageBox.information(self, "Voice Command", f"Command not recognized: '{command}'\n\nTry commands like:\n• 'Go to YouTube'\n• 'Open new tab'\n• 'Go back'\n• 'Search for cats'")
 if __name__ == "__main__":
     app = QApplication(sys.argv)
     window = MainWindow()
