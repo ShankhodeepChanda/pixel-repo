@@ -2,10 +2,12 @@ import sys
 import os
 import re
 import json
-from PyQt5.QtWidgets import QApplication, QMainWindow, QVBoxLayout, QHBoxLayout, QWidget, QPushButton, QLineEdit, QTabWidget, QLabel
+import gc
+from PyQt5.QtWidgets import QApplication, QMainWindow, QVBoxLayout, QHBoxLayout, QWidget, QPushButton, QLineEdit, QTabWidget, QLabel, QDialog, QListWidget, QProgressBar, QListWidgetItem, QFrame
 from PyQt5.QtWebEngineWidgets import QWebEngineView
-from PyQt5.QtCore import QUrl
+from PyQt5.QtCore import QUrl, Qt
 from PyQt5.QtGui import QFont
+from functools import partial
 
 class BrowserTab(QWidget):
     def __init__(self, parent=None, is_dark_mode=False):
@@ -20,9 +22,113 @@ class BrowserTab(QWidget):
         self.current_index = -1
         self.is_dark_mode = is_dark_mode
 
+class DownloadManagerDialog(QDialog):
+    def __init__(self, downloads, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Downloads")
+        self.setMinimumSize(400, 300)
+        layout = QVBoxLayout(self)
+        self.list_widget = QListWidget()
+        layout.addWidget(self.list_widget)
+        self.downloads = downloads
+        self.refresh()
+
+    def refresh(self):
+        self.list_widget.clear()
+        for d in self.downloads:
+            status = d.get('status', 'In Progress')
+            progress = d.get('progress', 0)
+            item_text = f"{d['filename']} - {status} ({progress}%)"
+            item = QListWidgetItem(item_text)
+            self.list_widget.addItem(item)
+
+class DownloadDropdown(QFrame):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowFlags(self.windowFlags() | Qt.Popup)
+        self.setFrameShape(QFrame.StyledPanel)
+        self.setStyleSheet("""
+            QFrame {
+                background: #fff;
+                border: 1px solid #ccc;
+                border-radius: 8px;
+            }
+        """)
+        self.setMinimumWidth(340)
+        self.layout = QVBoxLayout(self)
+        self.layout.setContentsMargins(12, 12, 12, 12)
+        self.layout.setSpacing(8)
+        self.download_widgets = []
+
+    def update_downloads(self, downloads):
+        # Remove old widgets
+        for w in self.download_widgets:
+            self.layout.removeWidget(w)
+            w.deleteLater()
+        self.download_widgets = []
+        if not downloads:
+            label = QLabel("No downloads yet.")
+            self.layout.addWidget(label)
+            self.download_widgets.append(label)
+            return
+        for d in downloads:
+            w = QWidget()
+            h = QHBoxLayout(w)
+            h.setContentsMargins(0, 0, 0, 0)
+            h.setSpacing(6)
+            v = QVBoxLayout()
+            v.setContentsMargins(0, 0, 0, 0)
+            v.setSpacing(2)
+            name = QLabel(d['filename'])
+            name.setMinimumWidth(120)
+            v.addWidget(name)
+            progress = QProgressBar()
+            progress.setValue(d.get('progress', 0))
+            progress.setMaximum(100)
+            progress.setTextVisible(True)
+            progress.setFormat(f"{d.get('status', 'In Progress')} (%p%)")
+            progress.setFixedHeight(14)  # Lower the height for a sleeker look
+            if d.get('status') == 'Completed':
+                progress.setStyleSheet("QProgressBar::chunk { background: #4caf50; }")
+            elif d.get('status') == 'Failed':
+                progress.setStyleSheet("QProgressBar::chunk { background: #e53935; }")
+            elif d.get('status') == 'Cancelled':
+                progress.setStyleSheet("QProgressBar::chunk { background: #bdbdbd; }")
+            v.addWidget(progress)
+            h.addLayout(v, 1)
+            # Cancel button
+            cancel_btn = QPushButton("✖")
+            cancel_btn.setFixedSize(24, 24)
+            cancel_btn.setToolTip("Cancel download")
+            cancel_btn.setStyleSheet("""
+                QPushButton {
+                    background: none;
+                    border: none;
+                    font-size: 14px;
+                    color: #e53935;
+                    border-radius: 12px;
+                }
+                QPushButton:hover:enabled {
+                    background-color: #ffeaea;
+                }
+            """)
+            # Only show cancel if in progress
+            if d.get('status') == 'In Progress':
+                cancel_btn.setEnabled(True)
+                cancel_btn.clicked.connect(d['cancel_callback'])
+            else:
+                cancel_btn.setEnabled(False)
+            h.addWidget(cancel_btn)
+            self.layout.addWidget(w)
+            self.download_widgets.append(w)
+
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
+        self.downloads = []  # Track download info for the download manager
+        # Enable hardware acceleration and smooth scrolling for all QWebEngineViews
+        os.environ["QTWEBENGINE_CHROMIUM_FLAGS"] = "--enable-gpu-rasterization --enable-zero-copy --enable-features=SmoothScrolling,TouchpadAndWheelScrollLatching,CompositorThreadedScroll"
+        
         self.setWindowTitle("Adapta")
         
         # Set window to full screen or maximized
@@ -55,6 +161,24 @@ class MainWindow(QMainWindow):
 
         # Store reference to toolbar for styling
         self.toolbar = toolbar
+
+        # Download button (define before adding to toolbar)
+        self.download_button = QPushButton("⬇️")
+        self.download_button.setFixedSize(32, 32)
+        self.download_button.setToolTip("Show Downloads")
+        self.download_button.setStyleSheet("""
+            QPushButton {
+                background: none;
+                border: none;
+                font-size: 20px;
+                color: #0078d4;
+                border-radius: 6px;
+            }
+            QPushButton:hover:enabled {
+                background-color: rgba(0, 120, 212, 0.08);
+            }
+        """)
+        self.download_button.clicked.connect(self.toggle_download_dropdown)
 
         # Navigation buttons
         self.back_button = QPushButton("←")
@@ -117,6 +241,8 @@ class MainWindow(QMainWindow):
         toolbar_layout.addWidget(self.reload_button)
         toolbar_layout.addSpacing(8)  # Space after reload
         toolbar_layout.addWidget(self.home_button)
+        # Download button should be left of the search bar
+        toolbar_layout.addWidget(self.download_button)
         
         # Center the search bar
         toolbar_layout.addStretch()  # Push search bar to center
@@ -203,12 +329,23 @@ class MainWindow(QMainWindow):
 
         self.apply_theme()
 
+        # Download dropdown initialization
+        self.download_dropdown = DownloadDropdown(self)
+        self.download_dropdown.hide()
+
     def add_new_tab(self, url=None):
         tab = BrowserTab(is_dark_mode=self.is_dark_mode)
+        # Restore default QWebEngineView settings (no forced disabling of features)
+        tab.browser.settings().setAttribute(tab.browser.settings().Accelerated2dCanvasEnabled, True)
+        tab.browser.settings().setAttribute(tab.browser.settings().WebGLEnabled, True)
+        tab.browser.settings().setAttribute(tab.browser.settings().JavascriptEnabled, True)
+        tab.browser.settings().setAttribute(tab.browser.settings().LocalStorageEnabled, True)
+        tab.browser.setAttribute(Qt.WA_OpaquePaintEvent, True)
+        tab.browser.setAttribute(Qt.WA_NoSystemBackground, True)
+        tab.browser.setFocusPolicy(True)
         idx = self.tabs.addTab(tab, "New Tab")
         self.tabs.setCurrentIndex(idx)
         tab.browser.urlChanged.connect(self.url_changed)
-        # Connect download handler to the browser's profile
         tab.browser.page().profile().downloadRequested.connect(self.handle_download_requested)
         if url:
             tab.browser.load(QUrl(url))
@@ -559,7 +696,9 @@ class MainWindow(QMainWindow):
         # Only update if this is the current tab
         if current_tab and sender_browser == current_tab.browser:
             url = qurl.toString()
-            self.url_input.setText(url)
+            # Only update if URL actually changed
+            if self.url_input.text() != url:
+                self.url_input.setText(url)
             # Update favicon in tab only
             def set_favicon():
                 icon = current_tab.browser.icon()
@@ -712,9 +851,59 @@ class MainWindow(QMainWindow):
         if save_path:
             download.setPath(save_path)
             download.accept()
+            download_info = {
+                'filename': os.path.basename(save_path),
+                'status': 'In Progress',
+                'progress': 0
+            }
+            # Now that download_info exists, add the cancel_callback
+            download_info['cancel_callback'] = partial(self.cancel_download, download, download_info)
+            self.downloads.append(download_info)
+            def on_progress(received, total):
+                percent = int(received * 100 / total) if total > 0 else 0
+                download_info['progress'] = percent
+                self.download_dropdown.update_downloads(self.downloads)
+            def on_finished():
+                if download.state() == download.DownloadCancelled:
+                    download_info['status'] = 'Cancelled'
+                elif download.state() == download.DownloadCompleted:
+                    download_info['status'] = 'Completed'
+                    download_info['progress'] = 100
+                else:
+                    download_info['status'] = 'Failed'
+                self.download_dropdown.update_downloads(self.downloads)
+            download.downloadProgress.connect(on_progress)
+            download.finished.connect(on_finished)
             QMessageBox.information(self, "Download Started", f"Downloading to: {save_path}")
+            self.download_dropdown.update_downloads(self.downloads)
         else:
             download.cancel()
+        # Hide dropdown if no downloads
+        if not self.downloads:
+            self.download_dropdown.hide()
+
+    def cancel_download(self, download, download_info):
+        download.cancel()
+        download_info['status'] = 'Cancelled'
+        self.download_dropdown.update_downloads(self.downloads)
+
+    def toggle_download_dropdown(self):
+        if self.download_dropdown.isVisible():
+            self.download_dropdown.hide()
+        else:
+            self.download_dropdown.update_downloads(self.downloads)
+            # Position dropdown aligned to the left of the download button
+            btn_pos = self.download_button.mapToGlobal(self.download_button.rect().bottomLeft())
+            dropdown_width = self.download_dropdown.sizeHint().width()
+            btn_width = self.download_button.width()
+            # Align left edge of dropdown with left edge of button
+            left_aligned_pos = btn_pos
+            self.download_dropdown.move(left_aligned_pos)
+            self.download_dropdown.show()
+
+    def show_downloads(self):
+        dlg = DownloadManagerDialog(self.downloads, self)
+        dlg.exec_()
 
     def show_menu(self):
         """Show the kebab menu with browser options"""
