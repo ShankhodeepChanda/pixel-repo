@@ -1,2 +1,19 @@
 # Auto detect text files and perform LF normalization
-* text=aut
+* text=auto
+
+# Explicitly mark common text files
+*.py text
+*.html text
+*.css text
+*.js text
+*.md text
+*.txt text
+*.json text
+
+# Mark binary files (if you add any later)
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.exe binary

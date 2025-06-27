@@ -167,9 +167,15 @@ class MainWindow(QMainWindow):
             self.tabs.removeTab(index)
 
     def on_tab_changed(self, index):
+        """Handle tab change"""
         tab = self.current_tab()
-        if tab:
-            self.url_input.setText(tab.browser.url().toString())
+        if tab and tab.browser:
+            current_url = tab.browser.url().toString()
+            # Handle special home page URL
+            if "adapta_home.html" in current_url:
+                self.url_input.setText("adapta://home")
+            else:
+                self.url_input.setText(current_url)
             self.update_navigation_buttons()
 
     def current_tab(self):
@@ -268,7 +274,80 @@ class MainWindow(QMainWindow):
         self.toolbar.setStyleSheet(toolbar_style)  # Apply to toolbar
         for btn in [self.back_button, self.forward_button, self.reload_button, self.home_button, self.dark_mode_button]:
             btn.setStyleSheet(button_style)
+        
+        # Apply plus button style
+        plus_button_style = button_style.replace("font-size: 18px;", "font-size: 22px;")
+        self.plus_button.setStyleSheet(plus_button_style)
+        
         self.url_input.setStyleSheet(url_input_style)
+        
+        # Style the tab widget
+        if self.is_dark_mode:
+            tab_style = """
+                QTabWidget::pane {
+                    border: none;
+                    background-color: #1e1e1e;
+                }
+                QTabBar::tab {
+                    background-color: #2d2d2d;
+                    color: #e0e0e0;
+                    padding: 8px 16px;
+                    margin-right: 2px;
+                    border-top-left-radius: 8px;
+                    border-top-right-radius: 8px;
+                }
+                QTabBar::tab:selected {
+                    background-color: #404040;
+                    color: #ffffff;
+                }
+                QTabBar::tab:hover {
+                    background-color: #353535;
+                }
+                QTabBar::close-button {
+                    image: none;
+                    background-color: #666;
+                    border-radius: 8px;
+                    width: 16px;
+                    height: 16px;
+                }
+                QTabBar::close-button:hover {
+                    background-color: #888;
+                }
+            """
+        else:
+            tab_style = """
+                QTabWidget::pane {
+                    border: none;
+                    background-color: #ffffff;
+                }
+                QTabBar::tab {
+                    background-color: #f0f0f0;
+                    color: #333;
+                    padding: 8px 16px;
+                    margin-right: 2px;
+                    border-top-left-radius: 8px;
+                    border-top-right-radius: 8px;
+                }
+                QTabBar::tab:selected {
+                    background-color: #ffffff;
+                    color: #000;
+                }
+                QTabBar::tab:hover {
+                    background-color: #e8e8e8;
+                }
+                QTabBar::close-button {
+                    image: none;
+                    background-color: #ccc;
+                    border-radius: 8px;
+                    width: 16px;
+                    height: 16px;
+                }
+                QTabBar::close-button:hover {
+                    background-color: #999;
+                }
+            """
+        
+        self.tabs.setStyleSheet(tab_style)
 
     def toggle_dark_mode(self):
         """Toggle between light and dark mode"""
@@ -284,17 +363,32 @@ class MainWindow(QMainWindow):
         
         self.apply_theme()
         
-        # Refresh home page if currently on home page
-        current_url = self.browser.url().toString()
-        if "adapta_home.html" in current_url or self.url_input.text() == "adapta://home":
-            self.go_home()
+        # Refresh home page for all tabs that are currently showing home page
+        for i in range(self.tabs.count()):
+            tab = self.tabs.widget(i)
+            if tab and tab.browser:
+                current_url = tab.browser.url().toString()
+                if "adapta_home.html" in current_url or "adapta://home" in current_url:
+                    self.go_home(tab=tab)
 
     def create_home_page_html(self):
-        """Create Safari-style home page HTML"""
-        current_time = __import__('datetime').datetime.now().strftime("%H:%M")
-        current_date = __import__('datetime').datetime.now().strftime("%A, %B %d")
+        """Create Safari-style home page HTML using external files"""
+        import datetime
+        import os
         
-        # Define popular sites
+        current_time = datetime.datetime.now().strftime("%H:%M")
+        current_date = datetime.datetime.now().strftime("%A, %B %d")
+        
+        # Read the HTML template
+        template_path = os.path.join(os.path.dirname(__file__), "home.html")
+        try:
+            with open(template_path, 'r', encoding='utf-8') as f:
+                html_template = f.read()
+        except FileNotFoundError:
+            # Fallback to inline HTML if file not found
+            return self.create_fallback_html()
+        
+        # Generate bookmarks HTML
         popular_sites = [
             {"name": "Google", "url": "https://www.google.com", "icon": "🔍"},
             {"name": "YouTube", "url": "https://www.youtube.com", "icon": "📺"},
@@ -310,7 +404,6 @@ class MainWindow(QMainWindow):
             {"name": "Spotify", "url": "https://www.spotify.com", "icon": "🎵"}
         ]
         
-        # Create bookmarks grid
         bookmarks_html = ""
         for site in popular_sites:
             bookmarks_html += f"""
@@ -320,255 +413,97 @@ class MainWindow(QMainWindow):
                 </div>
             """
         
-        # Choose theme colors
-        if self.is_dark_mode:
-            bg_color = "#1e1e1e"
-            text_color = "#e0e0e0"
-            secondary_text = "#a0a0a0"
-            card_bg = "#2d2d2d"
-            card_border = "#404040"
-            search_bg = "#404040"
-            search_border = "#555"
-            bookmark_hover = "#404040"
-        else:
-            bg_color = "#f5f5f7"
-            text_color = "#1d1d1f"
-            secondary_text = "#6e6e73"
-            card_bg = "#ffffff"
-            card_border = "#e5e5e7"
-            search_bg = "#ffffff"
-            search_border = "#d1d1d6"
-            bookmark_hover = "#f0f0f0"
+        # Set theme class
+        theme_class = "dark" if self.is_dark_mode else ""
         
-        html_content = f"""
-        <!DOCTYPE html>
-        <html lang="en">
-        <head>
-            <meta charset="UTF-8">
-            <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <title>Adapta - Home</title>
-            <style>
-                * {{
-                    margin: 0;
-                    padding: 0;
-                    box-sizing: border-box;
-                }}
-                
-                body {{
-                    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-                    background: {bg_color};
-                    color: {text_color};
-                    line-height: 1.6;
-                    min-height: 100vh;
-                    padding: 0 20px;
-                }}
-                
-                .container {{
-                    max-width: 1200px;
-                    margin: 0 auto;
-                    padding: 60px 0;
-                }}
-                
-                .header {{
-                    text-align: center;
-                    margin-bottom: 60px;
-                }}
-                
-                .time {{
-                    font-size: 4rem;
-                    font-weight: 300;
-                    margin-bottom: 10px;
-                    color: {text_color};
-                }}
-                
-                .date {{
-                    font-size: 1.2rem;
-                    color: {secondary_text};
-                    margin-bottom: 40px;
-                }}
-                
-                .search-container {{
-                    display: flex;
-                    justify-content: center;
-                    margin-bottom: 60px;
-                }}
-                
-                .search-box {{
-                    width: 100%;
-                    max-width: 600px;
-                    padding: 16px 24px;
-                    font-size: 18px;
-                    border: 1px solid {search_border};
-                    border-radius: 50px;
-                    background: {search_bg};
-                    color: {text_color};
-                    outline: none;
-                    transition: all 0.3s ease;
-                    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-                }}
-                
-                .search-box:focus {{
-                    border-color: #007aff;
-                    box-shadow: 0 0 0 4px rgba(0, 122, 255, 0.1);
-                }}
-                
-                .search-box::placeholder {{
-                    color: {secondary_text};
-                }}
-                
-                .bookmarks-section {{
-                    margin-bottom: 40px;
-                }}
-                
-                .section-title {{
-                    font-size: 1.5rem;
-                    font-weight: 600;
-                    margin-bottom: 30px;
-                    color: {text_color};
-                }}
-                
-                .bookmarks-grid {{
-                    display: grid;
-                    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
-                    gap: 20px;
-                    max-width: 960px;
-                    margin: 0 auto;
-                }}
-                
-                .bookmark-item {{
-                    background: {card_bg};
-                    border: 1px solid {card_border};
-                    border-radius: 12px;
-                    padding: 20px;
-                    text-align: center;
-                    cursor: pointer;
-                    transition: all 0.2s ease;
-                    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-                }}
-                
-                .bookmark-item:hover {{
-                    background: {bookmark_hover};
-                    transform: translateY(-2px);
-                    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-                }}
-                
-                .bookmark-icon {{
-                    font-size: 2.5rem;
-                    margin-bottom: 8px;
-                }}
-                
-                .bookmark-name {{
-                    font-size: 0.9rem;
-                    font-weight: 500;
-                    color: {text_color};
-                }}
-                
-                .footer {{
-                    text-align: center;
-                    margin-top: 60px;
-                    color: {secondary_text};
-                    font-size: 0.9rem;
-                }}
-                
-                @media (max-width: 768px) {{
-                    .time {{
-                        font-size: 3rem;
-                    }}
-                    
-                    .search-box {{
-                        font-size: 16px;
-                        padding: 14px 20px;
-                    }}
-                    
-                    .bookmarks-grid {{
-                        grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
-                        gap: 15px;
-                    }}
-                    
-                    .bookmark-item {{
-                        padding: 15px;
-                    }}
-                    
-                    .bookmark-icon {{
-                        font-size: 2rem;
-                    }}
-                }}
-            </style>
-        </head>
-        <body>
-            <div class="container">
-                <div class="header">
-                    <div class="time">{current_time}</div>
-                    <div class="date">{current_date}</div>
-                    
-                    <div class="search-container">
-                        <input type="text" class="search-box" placeholder="Search or enter website URL" 
-                               onkeypress="if(event.key==='Enter') handleSearch(this.value)">
-                    </div>
-                </div>
-                
-                <div class="bookmarks-section">
-                    <h2 class="section-title">Frequently Visited</h2>
-                    <div class="bookmarks-grid">
-                        {bookmarks_html}
-                    </div>
-                </div>
-                
-                <div class="footer">
-                    <p>Welcome to Adapta Browser - Your gateway to the web</p>
-                </div>
-            </div>
-            
-            <script>
-                function handleSearch(query) {{
-                    if (query.trim()) {{
-                        window.location.href = query;
-                    }}
-                }}
-                
-                // Update time every second
-                function updateTime() {{
-                    const now = new Date();
-                    const timeString = now.toLocaleTimeString('en-US', {{
-                        hour12: false,
-                        hour: '2-digit',
-                        minute: '2-digit'
-                    }});
-                    const timeElement = document.querySelector('.time');
-                    if (timeElement) {{
-                        timeElement.textContent = timeString;
-                    }}
-                }}
-                
-                setInterval(updateTime, 1000);
-                
-                // Focus search box on load
-                window.addEventListener('load', function() {{
-                    const searchBox = document.querySelector('.search-box');
-                    if (searchBox) {{
-                        searchBox.focus();
-                    }}
-                }});
-            </script>
-        </body>
-        </html>
-        """
+        # Replace placeholders in template
+        html_content = html_template.replace("{{current_time}}", current_time)
+        html_content = html_content.replace("{{current_date}}", current_date)
+        html_content = html_content.replace("{{bookmarks_html}}", bookmarks_html)
+        html_content = html_content.replace("{{theme_class}}", theme_class)
         
         return html_content
 
+    def create_fallback_html(self):
+        """Fallback HTML if external files are not found"""
+        current_time = __import__('datetime').datetime.now().strftime("%H:%M")
+        current_date = __import__('datetime').datetime.now().strftime("%A, %B %d")
+        
+        theme_class = "dark" if self.is_dark_mode else ""
+        bg_color = "#1e1e1e" if self.is_dark_mode else "#f5f5f7"
+        text_color = "#e0e0e0" if self.is_dark_mode else "#1d1d1f"
+        
+        return f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Adapta - Home</title>
+            <style>
+                body {{ background: {bg_color}; color: {text_color}; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; text-align: center; padding: 60px 20px; }}
+                .time {{ font-size: 4rem; font-weight: 300; margin-bottom: 10px; }}
+                .search-box {{ width: 100%; max-width: 600px; padding: 16px 24px; font-size: 18px; border: 1px solid #ccc; border-radius: 50px; }}
+            </style>
+        </head>
+        <body class="{theme_class}">
+            <div class="time">{current_time}</div>
+            <div class="date">{current_date}</div>
+            <br><br>
+            <input type="text" class="search-box" placeholder="Search or enter website URL" onkeypress="if(event.key==='Enter') window.location.href=this.value">
+            <p>Welcome to Adapta Browser</p>
+        </body>
+        </html>
+        """
+
     def go_home(self, tab=None):
+        """Navigate to home page"""
         if tab is None:
             tab = self.current_tab()
+        
+        if not tab:
+            return
+            
         home_html = self.create_home_page_html()
         import tempfile
         import os
+        import shutil
+        
         temp_dir = tempfile.gettempdir()
         home_file = os.path.join(temp_dir, "adapta_home.html")
-        with open(home_file, 'w', encoding='utf-8') as f:
-            f.write(home_html)
-        home_url = QUrl.fromLocalFile(home_file)
-        tab.browser.load(home_url)
-        self.url_input.setText("adapta://home")
+        
+        try:
+            # Write the HTML file
+            with open(home_file, 'w', encoding='utf-8') as f:
+                f.write(home_html)
+            
+            # Copy CSS and JS files to temp directory if they exist
+            script_dir = os.path.dirname(__file__)
+            css_source = os.path.join(script_dir, "home.css")
+            js_source = os.path.join(script_dir, "home.js")
+            
+            css_dest = os.path.join(temp_dir, "home.css")
+            js_dest = os.path.join(temp_dir, "home.js")
+            
+            if os.path.exists(css_source):
+                shutil.copy2(css_source, css_dest)
+            
+            if os.path.exists(js_source):
+                shutil.copy2(js_source, js_dest)
+            
+            home_url = QUrl.fromLocalFile(home_file)
+            tab.browser.load(home_url)
+            
+            # Only update URL input if this is the current tab
+            if tab == self.current_tab():
+                self.url_input.setText("adapta://home")
+                
+        except Exception as e:
+            print(f"Error creating home page: {e}")
+            # Load fallback HTML directly
+            fallback_html = self.create_fallback_html()
+            with open(home_file, 'w', encoding='utf-8') as f:
+                f.write(fallback_html)
+            home_url = QUrl.fromLocalFile(home_file)
+            tab.browser.load(home_url)
 
     def is_valid_url(self, string):
         """Check if string is a valid URL"""
@@ -598,7 +533,11 @@ class MainWindow(QMainWindow):
         return f"https://www.google.com/search?q={input_text.replace(' ', '+')}"
 
     def navigate_to_url(self, url=None):
+        """Navigate to URL or search query"""
         tab = self.current_tab()
+        if not tab:
+            return
+            
         if url is None:
             url = self.url_input.text()
         
@@ -611,44 +550,65 @@ class MainWindow(QMainWindow):
             tab.browser.load(qurl)
 
     def url_changed(self, qurl):
-        tab = self.current_tab()
-        url = qurl.toString()
-        self.url_input.setText(url)
-        # Update history per tab
-        if not tab.history or tab.history[tab.current_index] != url:
-            if tab.current_index < len(tab.history) - 1:
-                tab.history = tab.history[:tab.current_index + 1]
-            tab.history.append(url)
-            tab.current_index = len(tab.history) - 1
-        self.update_navigation_buttons()
-        self.tabs.setTabText(self.tabs.currentIndex(), self.page_title(tab))
+        """Update URL input when page changes"""
+        # Find which tab triggered this signal
+        sender_browser = self.sender()
+        current_tab = self.current_tab()
+        
+        # Only update if this is the current tab
+        if current_tab and sender_browser == current_tab.browser:
+            url = qurl.toString()
+            self.url_input.setText(url)
+            
+            # Update history per tab
+            if not current_tab.history or current_tab.current_index < 0 or current_tab.history[current_tab.current_index] != url:
+                if current_tab.current_index < len(current_tab.history) - 1:
+                    current_tab.history = current_tab.history[:current_tab.current_index + 1]
+                current_tab.history.append(url)
+                current_tab.current_index = len(current_tab.history) - 1
+            
+            self.update_navigation_buttons()
+            
+            # Update tab title
+            tab_index = self.tabs.indexOf(current_tab)
+            if tab_index >= 0:
+                self.tabs.setTabText(tab_index, self.page_title(current_tab))
 
     def page_title(self, tab):
         title = tab.browser.title() or "New Tab"
         return title[:20] + ("..." if len(title) > 20 else "")
 
     def go_back(self):
+        """Go back in history"""
         tab = self.current_tab()
-        if tab.current_index > 0:
+        if tab and tab.current_index > 0:
             tab.current_index -= 1
             url = tab.history[tab.current_index]
             tab.browser.load(QUrl(url))
 
     def go_forward(self):
+        """Go forward in history"""
         tab = self.current_tab()
-        if tab.current_index < len(tab.history) - 1:
+        if tab and tab.current_index < len(tab.history) - 1:
             tab.current_index += 1
             url = tab.history[tab.current_index]
             tab.browser.load(QUrl(url))
 
     def reload_page(self):
+        """Reload current page"""
         tab = self.current_tab()
-        tab.browser.reload()
+        if tab:
+            tab.browser.reload()
 
     def update_navigation_buttons(self):
+        """Update navigation button states"""
         tab = self.current_tab()
-        self.back_button.setEnabled(tab.current_index > 0)
-        self.forward_button.setEnabled(tab.current_index < len(tab.history) - 1)
+        if tab:
+            self.back_button.setEnabled(tab.current_index > 0)
+            self.forward_button.setEnabled(tab.current_index < len(tab.history) - 1)
+        else:
+            self.back_button.setEnabled(False)
+            self.forward_button.setEnabled(False)
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
