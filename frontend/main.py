@@ -547,22 +547,29 @@ class MainWindow(QMainWindow):
         self.tabs.setStyleSheet(tab_style)
 
     def create_home_page_html(self):
-        """Create Safari-style home page HTML using external files and bookmarks"""
+        """Create Safari-style home page HTML using external files and bookmarks, with custom background support"""
         import datetime
         import os
         current_time = datetime.datetime.now().strftime("%H:%M")
         current_date = datetime.datetime.now().strftime("%A, %B %d")
-        # Read the HTML template
         template_path = os.path.join(os.path.dirname(__file__), "home.html")
+        bg_path = self.get_home_background_path()
+        if self.is_dark_mode:
+            fallback_color = "#1e1e1e"
+        else:
+            fallback_color = "#f5f5f7"
+        bg_style = ""
+        if bg_path:
+            bg_url = QUrl.fromLocalFile(bg_path).toString()
+            bg_style = f"background: url('{bg_url}') center center no-repeat fixed; background-size: contain; background-color: {fallback_color};"
+        else:
+            bg_style = f"background: {fallback_color};"
         try:
             with open(template_path, 'r', encoding='utf-8') as f:
                 html_template = f.read()
         except FileNotFoundError:
-            # Fallback to inline HTML if file not found
             return self.create_fallback_html()
-        # Set theme class
         theme_class = "dark" if self.is_dark_mode else ""
-        # Bookmarks HTML
         bookmarks_html = ""
         if self.bookmarks:
             bookmarks_html += '<div class="bookmarks-grid">'
@@ -572,19 +579,28 @@ class MainWindow(QMainWindow):
                     <div class="bookmark-name">{bm["title"][:20] + ("..." if len(bm["title"]) > 20 else "")}</div>
                 </div>'''
             bookmarks_html += '</div>'
-        # Replace placeholders
         html_content = html_template.replace("{{current_time}}", current_time)
         html_content = html_content.replace("{{current_date}}", current_date)
         html_content = html_content.replace("{{theme_class}}", theme_class)
         html_content = html_content.replace("{{bookmarks_html}}", bookmarks_html)
+        html_content = html_content.replace("<body", f"<body style=\"{bg_style}\"")
         return html_content
 
     def create_fallback_html(self):
-        """Fallback HTML if external files are not found, with bookmarks"""
+        """Fallback HTML if external files are not found, with bookmarks and custom background support"""
         current_time = __import__('datetime').datetime.now().strftime("%H:%M")
         current_date = __import__('datetime').datetime.now().strftime("%A, %B %d")
         theme_class = "dark" if self.is_dark_mode else ""
-        bg_color = "#1e1e1e" if self.is_dark_mode else "#f5f5f7"
+        bg_path = self.get_home_background_path()
+        if self.is_dark_mode:
+            fallback_color = "#1e1e1e"
+        else:
+            fallback_color = "#f5f5f7"
+        if bg_path:
+            bg_url = QUrl.fromLocalFile(bg_path).toString()
+            bg_style = f"background: url('{bg_url}') center center no-repeat fixed; background-size: contain; background-color: {fallback_color};"
+        else:
+            bg_style = f"background: {fallback_color};"
         text_color = "#e0e0e0" if self.is_dark_mode else "#1d1d1f"
         bookmarks_html = ""
         if self.bookmarks:
@@ -601,7 +617,7 @@ class MainWindow(QMainWindow):
         <head>
             <title>Adapta - Home</title>
             <style>
-                body {{ background: {bg_color}; color: {text_color}; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; text-align: center; padding: 60px 20px; }}
+                body {{ {bg_style} color: {text_color}; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; text-align: center; padding: 60px 20px; }}
                 .time {{ font-size: 4rem; font-weight: 300; margin-bottom: 10px; }}
             </style>
         </head>
@@ -959,6 +975,7 @@ class MainWindow(QMainWindow):
         menu.addAction("📊 View Page Source", self.view_page_source)
         menu.addAction("🛠️ Inspect Element", self.inspect_element)
         menu.addSeparator()
+        menu.addAction("🖼️ Set Home Background", self.set_home_background)
         menu.addAction("📋 Bookmarks Manager", self.open_bookmarks_manager)
         menu.addAction("⚙️ Settings", self.open_settings)
         menu.addSeparator()
@@ -1056,6 +1073,54 @@ class MainWindow(QMainWindow):
                 break
         if not found:
             QMessageBox.information(self, "Voice Command", f"No tab found matching: {command}")
+
+    def set_home_background(self):
+        """Let user pick an image for the home page background and save it"""
+        from PyQt5.QtWidgets import QFileDialog, QMessageBox
+        import shutil
+        import os
+        # Let user pick an image
+        file_path, _ = QFileDialog.getOpenFileName(self, "Select Background Image", "", "Images (*.png *.jpg *.jpeg *.bmp)")
+        if not file_path:
+            return
+        # Copy image to a known location in the app directory
+        app_dir = os.path.dirname(__file__)
+        bg_dir = os.path.join(app_dir, "home_bg")
+        os.makedirs(bg_dir, exist_ok=True)
+        ext = os.path.splitext(file_path)[1]
+        dest_path = os.path.join(bg_dir, "background" + ext)
+        try:
+            shutil.copy2(file_path, dest_path)
+            # Save path in config
+            with open(os.path.join(app_dir, "home_bg.json"), "w", encoding="utf-8") as f:
+                json.dump({"bg_path": dest_path}, f)
+            QMessageBox.information(self, "Home Background", "Background image set! Reloading home page...")
+            self.update_home_background_all_tabs()
+        except Exception as e:
+            QMessageBox.warning(self, "Home Background", f"Failed to set background: {e}")
+
+    def get_home_background_path(self):
+        import os
+        app_dir = os.path.dirname(__file__)
+        config_path = os.path.join(app_dir, "home_bg.json")
+        if os.path.exists(config_path):
+            try:
+                with open(config_path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                if os.path.exists(data.get("bg_path", "")):
+                    return data["bg_path"]
+            except Exception:
+                pass
+        return None
+
+    def update_home_background_all_tabs(self):
+        for i in range(self.tabs.count()):
+            tab = self.tabs.widget(i)
+            if tab and tab.browser:
+                current_url = tab.browser.url().toString()
+                if "adapta_home.html" in current_url or "adapta://home" in current_url:
+                    self.go_home(tab=tab)
+
 if __name__ == "__main__":
     app = QApplication(sys.argv)
     window = MainWindow()
