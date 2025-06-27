@@ -1,4 +1,4 @@
-// Popular sites configuration
+
 const POPULAR_SITES = [
     { name: "Google", url: "https://www.google.com", icon: "🔍" },
     { name: "YouTube", url: "https://www.youtube.com", icon: "📺" },
