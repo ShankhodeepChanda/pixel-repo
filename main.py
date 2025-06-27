@@ -10,7 +10,13 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Adapta")
-        self.setGeometry(100, 100, 1200, 800)
+        
+        # Set window to full screen or maximized
+        self.setMinimumSize(800, 600)  # Set minimum size
+        self.showMaximized()  # Start maximized to cover full screen
+        
+        # Alternative: Use this for true fullscreen
+        # self.showFullScreen()
 
         # History management
         self.history = []
@@ -20,20 +26,21 @@ class MainWindow(QMainWindow):
         main_widget = QWidget()
         self.setCentralWidget(main_widget)
         layout = QVBoxLayout(main_widget)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(0)
+        layout.setContentsMargins(0, 0, 0, 0)  # Remove margins
+        layout.setSpacing(0)  # Remove spacing
 
         # Create toolbar
         toolbar = QWidget()
+        toolbar.setFixedHeight(48)  # Set fixed height for toolbar
         toolbar.setStyleSheet("""
             QWidget {
                 background-color: #f9f9f9;
                 border-bottom: 1px solid #ddd;
-                padding: 8px;
             }
         """)
         toolbar_layout = QHBoxLayout(toolbar)
         toolbar_layout.setContentsMargins(12, 8, 12, 8)
+        toolbar_layout.setSpacing(10)
 
         # Navigation buttons
         self.back_button = QPushButton("←")
@@ -83,10 +90,11 @@ class MainWindow(QMainWindow):
 
         # Web view setup
         self.browser = QWebEngineView()
+        self.browser.setMinimumSize(400, 300)  # Set minimum size for web view
 
-        # Add to main layout
-        layout.addWidget(toolbar)
-        layout.addWidget(self.browser)
+        # Add to main layout - ensure browser takes full remaining space
+        layout.addWidget(toolbar, 0)  # Don't stretch toolbar
+        layout.addWidget(self.browser, 1)  # Stretch browser to fill remaining space
 
         # Connect signals
         self.url_input.returnPressed.connect(self.navigate_to_url)
