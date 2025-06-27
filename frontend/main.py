@@ -1037,7 +1037,7 @@ class MainWindow(QMainWindow):
                 recognizer.adjust_for_ambient_noise(source, duration=0.5)
                 
                 # Show listening dialog
-                QMessageBox.information(self, "Voice Command", "Listening... Please speak your command.\n\nExample commands:\n• 'Go to YouTube'\n• 'Open new tab'\n• 'Go back'\n• 'Reload page'\n• 'Switch to [tab name]'")
+                QMessageBox.information(self, "Voice Command", "Listening... Please speak your command.\n\nExample commands:\n• 'Go to YouTube'\n• 'Open new tab'\n• 'Go back'\n• 'Reload page'\n• 'Switch to dark mode'\n• 'Enable light mode'\n• 'Search for cats'")
                 
                 # Listen for audio
                 audio = recognizer.listen(source, timeout=8, phrase_time_limit=5)
@@ -1152,12 +1152,49 @@ class MainWindow(QMainWindow):
             QMessageBox.information(self, "Voice Command", "Bookmark toggled")
             return
             
-        # Theme commands
-        elif "dark mode" in command or "toggle dark mode" in command:
-            self.toggle_dark_mode_menu()
-            mode = "dark" if self.is_dark_mode else "light"
-            QMessageBox.information(self, "Voice Command", f"Switched to {mode} mode")
-            return
+        # Theme commands - Enhanced dark mode voice recognition
+        elif any(phrase in command for phrase in [
+            "dark mode", "toggle dark mode", "switch to dark mode", "enable dark mode",
+            "turn on dark mode", "activate dark mode", "dark theme", "switch to dark theme",
+            "enable dark theme", "turn on dark theme", "night mode", "switch to night mode",
+            "enable night mode", "turn on night mode"
+        ]):
+            # If already in dark mode and user says "enable/turn on", inform them
+            if self.is_dark_mode and any(phrase in command for phrase in ["enable", "turn on", "activate", "switch to"]):
+                QMessageBox.information(self, "Voice Command", "Dark mode is already enabled!")
+                return
+            # If not in dark mode, or if they say "toggle", switch to dark mode
+            elif not self.is_dark_mode or "toggle" in command:
+                self.toggle_dark_mode_menu()
+                QMessageBox.information(self, "Voice Command", "Switched to dark mode")
+                return
+            # If already in dark mode and they say "dark mode" without toggle/enable, toggle off
+            else:
+                self.toggle_dark_mode_menu()
+                QMessageBox.information(self, "Voice Command", "Switched to light mode")
+                return
+                
+        # Light mode commands
+        elif any(phrase in command for phrase in [
+            "light mode", "switch to light mode", "enable light mode", "turn on light mode",
+            "activate light mode", "light theme", "switch to light theme", "enable light theme",
+            "turn on light theme", "day mode", "switch to day mode", "disable dark mode",
+            "turn off dark mode", "deactivate dark mode"
+        ]):
+            # If already in light mode and user says "enable/turn on", inform them
+            if not self.is_dark_mode and any(phrase in command for phrase in ["enable", "turn on", "activate", "switch to"]):
+                QMessageBox.information(self, "Voice Command", "Light mode is already enabled!")
+                return
+            # If in dark mode, or if they say "disable dark mode", switch to light mode
+            elif self.is_dark_mode or any(phrase in command for phrase in ["disable", "turn off", "deactivate"]):
+                self.toggle_dark_mode_menu()
+                QMessageBox.information(self, "Voice Command", "Switched to light mode")
+                return
+            # If already in light mode and they say "light mode", toggle to dark
+            else:
+                self.toggle_dark_mode_menu()
+                QMessageBox.information(self, "Voice Command", "Switched to dark mode")
+                return
         
         # Search commands
         elif "search for" in command:
@@ -1170,7 +1207,7 @@ class MainWindow(QMainWindow):
                 return
         
         # If no command matched
-        QMessageBox.information(self, "Voice Command", f"Command not recognized: '{command}'\n\nTry commands like:\n• 'Go to YouTube'\n• 'Open new tab'\n• 'Go back'\n• 'Search for cats'")
+        QMessageBox.information(self, "Voice Command", f"Command not recognized: '{command}'\n\nTry commands like:\n• 'Go to YouTube'\n• 'Open new tab'\n• 'Go back'\n• 'Search for cats'\n• 'Switch to dark mode'\n• 'Enable light mode'\n• 'Toggle dark theme'")
 
     def open_history(self):
         """Open browser history dialog"""
