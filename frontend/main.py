@@ -1,7 +1,8 @@
 import sys
 import os
 import re
-from PyQt5.QtWidgets import QApplication, QMainWindow, QVBoxLayout, QHBoxLayout, QWidget, QPushButton, QLineEdit, QTabWidget
+import json
+from PyQt5.QtWidgets import QApplication, QMainWindow, QVBoxLayout, QHBoxLayout, QWidget, QPushButton, QLineEdit, QTabWidget, QLabel
 from PyQt5.QtWebEngineWidgets import QWebEngineView
 from PyQt5.QtCore import QUrl
 from PyQt5.QtGui import QFont
@@ -34,6 +35,10 @@ class MainWindow(QMainWindow):
         # History management
         self.history = []
         self.current_index = -1
+
+        # Bookmarks initialization
+        self.bookmarks = []  # List of dicts: {"url": ..., "title": ...}
+        self.load_bookmarks()
 
         # Create main widget and layout
         main_widget = QWidget()
@@ -110,8 +115,10 @@ class MainWindow(QMainWindow):
         toolbar_layout.addWidget(self.forward_button)
         toolbar_layout.addWidget(self.reload_button)
         toolbar_layout.addWidget(self.home_button)
+        # Remove favicon label from toolbar
+        # toolbar_layout.addWidget(self.favicon_label)
         toolbar_layout.addWidget(self.url_input)
-        # Add plus button after search bar
+        # Add plus button after search bar (define before using)
         self.plus_button = QPushButton("＋")
         self.plus_button.setFixedSize(32, 32)
         self.plus_button.setStyleSheet("""
@@ -127,6 +134,24 @@ class MainWindow(QMainWindow):
             }
         """)
         self.plus_button.setToolTip("New Tab")
+        # Add bookmark (star) button to the right of search bar
+        self.bookmark_button = QPushButton()
+        self.bookmark_button.setFixedSize(32, 32)
+        self.bookmark_button.setToolTip("Bookmark this page")
+        self.bookmark_button.setStyleSheet("""
+            QPushButton {
+                background: none;
+                border: none;
+                font-size: 20px;
+                color: #e0c200;
+                border-radius: 6px;
+            }
+            QPushButton:hover:enabled {
+                background-color: rgba(255, 215, 0, 0.08);
+            }
+        """)
+        self.bookmark_button.setText("☆")  # Outline star
+        toolbar_layout.addWidget(self.bookmark_button)
         toolbar_layout.addWidget(self.plus_button)
         toolbar_layout.addWidget(self.dark_mode_button)
 
@@ -149,6 +174,7 @@ class MainWindow(QMainWindow):
         self.home_button.clicked.connect(self.go_home)
         self.dark_mode_button.clicked.connect(self.toggle_dark_mode)
         self.plus_button.clicked.connect(self.add_new_tab)
+        self.bookmark_button.clicked.connect(self.toggle_bookmark)
 
         self.apply_theme()
 
@@ -177,6 +203,7 @@ class MainWindow(QMainWindow):
             else:
                 self.url_input.setText(current_url)
             self.update_navigation_buttons()
+        self.update_bookmark_icon()
 
     def current_tab(self):
         return self.tabs.currentWidget()
@@ -303,16 +330,6 @@ class MainWindow(QMainWindow):
                 QTabBar::tab:hover {
                     background-color: #353535;
                 }
-                QTabBar::close-button {
-                    image: none;
-                    background-color: #666;
-                    border-radius: 8px;
-                    width: 16px;
-                    height: 16px;
-                }
-                QTabBar::close-button:hover {
-                    background-color: #888;
-                }
             """
         else:
             tab_style = """
@@ -334,16 +351,6 @@ class MainWindow(QMainWindow):
                 }
                 QTabBar::tab:hover {
                     background-color: #e8e8e8;
-                }
-                QTabBar::close-button {
-                    image: none;
-                    background-color: #ccc;
-                    border-radius: 8px;
-                    width: 16px;
-                    height: 16px;
-                }
-                QTabBar::close-button:hover {
-                    background-color: #999;
                 }
             """
         
@@ -372,13 +379,11 @@ class MainWindow(QMainWindow):
                     self.go_home(tab=tab)
 
     def create_home_page_html(self):
-        """Create Safari-style home page HTML using external files"""
+        """Create Safari-style home page HTML using external files and bookmarks"""
         import datetime
         import os
-        
         current_time = datetime.datetime.now().strftime("%H:%M")
         current_date = datetime.datetime.now().strftime("%A, %B %d")
-        
         # Read the HTML template
         template_path = os.path.join(os.path.dirname(__file__), "home.html")
         try:
@@ -387,29 +392,39 @@ class MainWindow(QMainWindow):
         except FileNotFoundError:
             # Fallback to inline HTML if file not found
             return self.create_fallback_html()
-        
         # Set theme class
         theme_class = "dark" if self.is_dark_mode else ""
-        
-        # Replace only the placeholders that are not handled by JS
+        # Bookmarks HTML
+        bookmarks_html = ""
+        if self.bookmarks:
+            bookmarks_html += '<div class="bookmarks-grid" style="display: flex; flex-wrap: wrap; justify-content: center; gap: 18px; margin-top: 32px;">'
+            for bm in self.bookmarks:
+                bookmarks_html += f'<a href="{bm["url"]}" style="display: block; min-width: 120px; max-width: 200px; padding: 18px 16px; background: rgba(0,0,0,0.04); border-radius: 16px; text-decoration: none; color: inherit; box-shadow: 0 2px 8px rgba(0,0,0,0.04); text-align: center; font-size: 1.1em;">'
+                bookmarks_html += f'<div style="font-size: 1.5em; margin-bottom: 6px;">🔖</div>'
+                bookmarks_html += f'{bm["title"][:32] + ("..." if len(bm["title"]) > 32 else "")}<br><span style="font-size:0.85em;color:#888;">{bm["url"]}</span></a>'
+            bookmarks_html += '</div>'
+        # Replace placeholders
         html_content = html_template.replace("{{current_time}}", current_time)
         html_content = html_content.replace("{{current_date}}", current_date)
         html_content = html_content.replace("{{theme_class}}", theme_class)
-        # Remove any other placeholder that is now handled by JS
-        html_content = html_content.replace("{{bookmarks_html}}", "")
-        
+        html_content = html_content.replace("{{bookmarks_html}}", bookmarks_html)
         return html_content
 
     def create_fallback_html(self):
-        """Fallback HTML if external files are not found"""
+        """Fallback HTML if external files are not found, with bookmarks"""
         current_time = __import__('datetime').datetime.now().strftime("%H:%M")
         current_date = __import__('datetime').datetime.now().strftime("%A, %B %d")
-        
         theme_class = "dark" if self.is_dark_mode else ""
         bg_color = "#1e1e1e" if self.is_dark_mode else "#f5f5f7"
         text_color = "#e0e0e0" if self.is_dark_mode else "#1d1d1f"
-        
-        # Minimal fallback HTML, no bookmarks grid or search JS, just a static welcome
+        bookmarks_html = ""
+        if self.bookmarks:
+            bookmarks_html += '<div class="bookmarks-grid" style="display: flex; flex-wrap: wrap; justify-content: center; gap: 18px; margin-top: 32px;">'
+            for bm in self.bookmarks:
+                bookmarks_html += f'<a href="{bm["url"]}" style="display: block; min-width: 120px; max-width: 200px; padding: 18px 16px; background: rgba(0,0,0,0.04); border-radius: 16px; text-decoration: none; color: inherit; box-shadow: 0 2px 8px rgba(0,0,0,0.04); text-align: center; font-size: 1.1em;">'
+                bookmarks_html += f'<div style="font-size: 1.5em; margin-bottom: 6px;">🔖</div>'
+                bookmarks_html += f'{bm["title"][:32] + ("..." if len(bm["title"]) > 32 else "")}<br><span style="font-size:0.85em;color:#888;">{bm["url"]}</span></a>'
+            bookmarks_html += '</div>'
         return f"""
         <!DOCTYPE html>
         <html>
@@ -424,15 +439,18 @@ class MainWindow(QMainWindow):
             <div class=\"time\">{current_time}</div>
             <div class=\"date\">{current_date}</div>
             <p>Welcome to Adapta Browser</p>
+            {bookmarks_html}
         </body>
         </html>
         """
 
     def go_home(self, tab=None):
         """Navigate to home page"""
+        # Handle signal emission (clicked may pass a boolean)
+        if isinstance(tab, bool):
+            tab = None
         if tab is None:
             tab = self.current_tab()
-        
         if not tab:
             return
             
@@ -524,15 +542,22 @@ class MainWindow(QMainWindow):
             tab.browser.load(qurl)
 
     def url_changed(self, qurl):
-        """Update URL input when page changes"""
+        """Update URL input when page changes and update favicon"""
         # Find which tab triggered this signal
         sender_browser = self.sender()
         current_tab = self.current_tab()
-        
         # Only update if this is the current tab
         if current_tab and sender_browser == current_tab.browser:
             url = qurl.toString()
             self.url_input.setText(url)
+            # Update favicon in tab only
+            def set_favicon():
+                icon = current_tab.browser.icon()
+                tab_index = self.tabs.indexOf(current_tab)
+                if tab_index >= 0:
+                    self.tabs.setTabIcon(tab_index, icon)
+            current_tab.browser.iconChanged.connect(lambda _: set_favicon())
+            set_favicon()
             
             # Update history per tab
             if not current_tab.history or current_tab.current_index < 0 or current_tab.history[current_tab.current_index] != url:
@@ -542,11 +567,11 @@ class MainWindow(QMainWindow):
                 current_tab.current_index = len(current_tab.history) - 1
             
             self.update_navigation_buttons()
-            
             # Update tab title
             tab_index = self.tabs.indexOf(current_tab)
             if tab_index >= 0:
                 self.tabs.setTabText(tab_index, self.page_title(current_tab))
+            self.update_bookmark_icon()
 
     def page_title(self, tab):
         title = tab.browser.title() or "New Tab"
@@ -583,6 +608,76 @@ class MainWindow(QMainWindow):
         else:
             self.back_button.setEnabled(False)
             self.forward_button.setEnabled(False)
+
+    def toggle_bookmark(self):
+        """Add or remove current page from bookmarks"""
+        tab = self.current_tab()
+        if not tab:
+            return
+        url = tab.browser.url().toString()
+        title = tab.browser.title() or url
+        # Check if already bookmarked
+        for bm in self.bookmarks:
+            if bm["url"] == url:
+                self.bookmarks.remove(bm)
+                self.bookmark_button.setText("☆")  # Outline star
+                self.bookmark_button.setToolTip("Bookmark this page")
+                self.save_bookmarks()
+                self.update_home_bookmarks()
+                return
+        # Add new bookmark
+        self.bookmarks.append({"url": url, "title": title})
+        self.bookmark_button.setText("★")  # Filled star
+        self.bookmark_button.setToolTip("Remove bookmark")
+        self.save_bookmarks()
+        self.update_home_bookmarks()  # Save changes to bookmarks
+
+    def update_bookmark_icon(self):
+        """Update the star icon based on whether current page is bookmarked"""
+        tab = self.current_tab()
+        if not tab:
+            self.bookmark_button.setText("☆")
+            self.bookmark_button.setToolTip("Bookmark this page")
+            return
+        url = tab.browser.url().toString()
+        for bm in self.bookmarks:
+            if bm["url"] == url:
+                self.bookmark_button.setText("★")
+                self.bookmark_button.setToolTip("Remove bookmark")
+                return
+        self.bookmark_button.setText("☆")
+        self.bookmark_button.setToolTip("Bookmark this page")
+
+    def update_home_bookmarks(self):
+        """Force refresh of home page if visible to update bookmarks grid"""
+        for i in range(self.tabs.count()):
+            tab = self.tabs.widget(i)
+            if tab and tab.browser:
+                current_url = tab.browser.url().toString()
+                if "adapta_home.html" in current_url or "adapta://home" in current_url:
+                    self.go_home(tab=tab)
+
+    def load_bookmarks(self):
+        """Load bookmarks from a JSON file if it exists"""
+        import os
+        try:
+            bookmarks_path = os.path.join(os.path.dirname(__file__), "bookmarks.json")
+            if os.path.exists(bookmarks_path):
+                with open(bookmarks_path, "r", encoding="utf-8") as f:
+                    self.bookmarks = json.load(f)
+        except Exception as e:
+            print(f"Error loading bookmarks: {e}")
+            self.bookmarks = []
+
+    def save_bookmarks(self):
+        """Save bookmarks to a JSON file"""
+        import os
+        try:
+            bookmarks_path = os.path.join(os.path.dirname(__file__), "bookmarks.json")
+            with open(bookmarks_path, "w", encoding="utf-8") as f:
+                json.dump(self.bookmarks, f, ensure_ascii=False, indent=2)
+        except Exception as e:
+            print(f"Error saving bookmarks: {e}")
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
