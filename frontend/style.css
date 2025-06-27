@@ -1,6 +1,6 @@
 body {
   font-family: sans-serif;
-  transition: background 0.5s;
+  transition: background 0.4s;
 }
 body.dark {
   background: #121211;
