@@ -388,39 +388,15 @@ class MainWindow(QMainWindow):
             # Fallback to inline HTML if file not found
             return self.create_fallback_html()
         
-        # Generate bookmarks HTML
-        popular_sites = [
-            {"name": "Google", "url": "https://www.google.com", "icon": "🔍"},
-            {"name": "YouTube", "url": "https://www.youtube.com", "icon": "📺"},
-            {"name": "GitHub", "url": "https://www.github.com", "icon": "🐙"},
-            {"name": "Stack Overflow", "url": "https://stackoverflow.com", "icon": "📚"},
-            {"name": "Reddit", "url": "https://www.reddit.com", "icon": "🤖"},
-            {"name": "Twitter", "url": "https://www.twitter.com", "icon": "🐦"},
-            {"name": "Facebook", "url": "https://www.facebook.com", "icon": "📘"},
-            {"name": "Instagram", "url": "https://www.instagram.com", "icon": "📷"},
-            {"name": "LinkedIn", "url": "https://www.linkedin.com", "icon": "💼"},
-            {"name": "Amazon", "url": "https://www.amazon.com", "icon": "🛒"},
-            {"name": "Netflix", "url": "https://www.netflix.com", "icon": "🎬"},
-            {"name": "Spotify", "url": "https://www.spotify.com", "icon": "🎵"}
-        ]
-        
-        bookmarks_html = ""
-        for site in popular_sites:
-            bookmarks_html += f"""
-                <div class="bookmark-item" onclick="window.location.href='{site['url']}'">
-                    <div class="bookmark-icon">{site['icon']}</div>
-                    <div class="bookmark-name">{site['name']}</div>
-                </div>
-            """
-        
         # Set theme class
         theme_class = "dark" if self.is_dark_mode else ""
         
-        # Replace placeholders in template
+        # Replace only the placeholders that are not handled by JS
         html_content = html_template.replace("{{current_time}}", current_time)
         html_content = html_content.replace("{{current_date}}", current_date)
-        html_content = html_content.replace("{{bookmarks_html}}", bookmarks_html)
         html_content = html_content.replace("{{theme_class}}", theme_class)
+        # Remove any other placeholder that is now handled by JS
+        html_content = html_content.replace("{{bookmarks_html}}", "")
         
         return html_content
 
@@ -433,6 +409,7 @@ class MainWindow(QMainWindow):
         bg_color = "#1e1e1e" if self.is_dark_mode else "#f5f5f7"
         text_color = "#e0e0e0" if self.is_dark_mode else "#1d1d1f"
         
+        # Minimal fallback HTML, no bookmarks grid or search JS, just a static welcome
         return f"""
         <!DOCTYPE html>
         <html>
@@ -441,14 +418,11 @@ class MainWindow(QMainWindow):
             <style>
                 body {{ background: {bg_color}; color: {text_color}; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; text-align: center; padding: 60px 20px; }}
                 .time {{ font-size: 4rem; font-weight: 300; margin-bottom: 10px; }}
-                .search-box {{ width: 100%; max-width: 600px; padding: 16px 24px; font-size: 18px; border: 1px solid #ccc; border-radius: 50px; }}
             </style>
         </head>
-        <body class="{theme_class}">
-            <div class="time">{current_time}</div>
-            <div class="date">{current_date}</div>
-            <br><br>
-            <input type="text" class="search-box" placeholder="Search or enter website URL" onkeypress="if(event.key==='Enter') window.location.href=this.value">
+        <body class=\"{theme_class}\">
+            <div class=\"time\">{current_time}</div>
+            <div class=\"date\">{current_date}</div>
             <p>Welcome to Adapta Browser</p>
         </body>
         </html>
