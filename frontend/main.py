@@ -24,6 +24,44 @@ class BrowserTab(QWidget):
         self.current_index = -1
         self.is_dark_mode = is_dark_mode
 
+        # Add custom context menu for right-click
+        self.browser.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.browser.customContextMenuRequested.connect(self.show_custom_context_menu)
+        # Support for target="_blank" links
+        self.browser.createWindow = self.create_new_tab_for_window
+
+    def create_new_tab_for_window(self, window_type):
+        # Find the main window
+        mw = self.window()
+        if hasattr(mw, 'add_new_tab'):
+            # Create a new tab and return its QWebEngineView
+            new_tab = BrowserTab(is_dark_mode=self.is_dark_mode)
+            idx = mw.tabs.addTab(new_tab, "New Tab")
+            mw.tabs.setCurrentIndex(idx)
+            new_tab.browser.urlChanged.connect(mw.url_changed)
+            new_tab.browser.page().profile().downloadRequested.connect(mw.handle_download_requested)
+            return new_tab.browser
+        return None
+
+    def show_custom_context_menu(self, pos):
+        from PyQt5.QtWidgets import QMenu
+        from PyQt5.QtWebEngineWidgets import QWebEngineContextMenuData
+        menu = self.browser.page().createStandardContextMenu()
+        context_data = self.browser.page().contextMenuData()
+        link_url = context_data.linkUrl().toString() if context_data.linkUrl().isValid() else None
+        image_url = context_data.mediaUrl().toString() if context_data.mediaType() == QWebEngineContextMenuData.MediaTypeImage and context_data.mediaUrl().isValid() else None
+        # Prefer link if present, else image
+        target_url = link_url or image_url
+        if target_url:
+            open_in_new_tab_action = menu.addAction("Open Link in New Tab")
+            def open_in_new_tab():
+                # Find main window and call add_new_tab
+                mw = self.window()
+                if hasattr(mw, 'add_new_tab'):
+                    mw.add_new_tab(target_url)
+            open_in_new_tab_action.triggered.connect(open_in_new_tab)
+        menu.exec_(self.browser.mapToGlobal(pos))
+
 class DownloadManagerDialog(QDialog):
     def __init__(self, downloads, parent=None):
         super().__init__(parent)
@@ -143,7 +181,7 @@ class MainWindow(QMainWindow):
         self.current_index = -1
 
         # Bookmarks initialization
-        self.bookmarks = []  # List of dicts: {"url": ..., "title": ...}
+        self.bookmarks = []  # List of dicts: {"url": ..., "title": ..."}
         self.load_bookmarks()
 
         # Create main widget and layout
@@ -374,6 +412,11 @@ class MainWindow(QMainWindow):
         idx = self.tabs.addTab(tab, "New Tab")
         self.tabs.setCurrentIndex(idx)
         tab.browser.urlChanged.connect(self.url_changed)
+        # Disconnect previous connections to avoid multiple prompts
+        try:
+            tab.browser.page().profile().downloadRequested.disconnect()
+        except Exception:
+            pass
         tab.browser.page().profile().downloadRequested.connect(self.handle_download_requested)
         if url:
             tab.browser.load(QUrl(url))
@@ -901,44 +944,43 @@ class MainWindow(QMainWindow):
             print(f"Error saving bookmarks: {e}")
 
     def handle_download_requested(self, download):
-        """Handle file download requests"""
+        """Handle file download requests (only one save dialog per download)"""
         from PyQt5.QtWidgets import QFileDialog, QMessageBox
         suggested_path = download.path()
-        # Ask user where to save the file
-        save_path, _ = QFileDialog.getSaveFileName(self, "Save File", suggested_path)
-        if save_path:
-            download.setPath(save_path)
-            download.accept()
-            download_info = {
-                'filename': os.path.basename(save_path),
-                'status': 'In Progress',
-                'progress': 0
-            }
-            # Now that download_info exists, add the cancel_callback
-            download_info['cancel_callback'] = partial(self.cancel_download, download, download_info)
-            self.downloads.append(download_info)
-            def on_progress(received, total):
-                percent = int(received * 100 / total) if total > 0 else 0
-                download_info['progress'] = percent
+        # Only prompt if the download is not already accepted
+        if download.state() == download.DownloadRequested:
+            save_path, _ = QFileDialog.getSaveFileName(self, "Save File", suggested_path)
+            if save_path:
+                download.setPath(save_path)
+                download.accept()
+                download_info = {
+                    'filename': os.path.basename(save_path),
+                    'status': 'In Progress',
+                    'progress': 0
+                }
+                download_info['cancel_callback'] = partial(self.cancel_download, download, download_info)
+                self.downloads.append(download_info)
+                def on_progress(received, total):
+                    percent = int(received * 100 / total) if total > 0 else 0
+                    download_info['progress'] = percent
+                    self.download_dropdown.update_downloads(self.downloads)
+                def on_finished():
+                    if download.state() == download.DownloadCancelled:
+                        download_info['status'] = 'Cancelled'
+                    elif download.state() == download.DownloadCompleted:
+                        download_info['status'] = 'Completed'
+                        download_info['progress'] = 100
+                    else:
+                        download_info['status'] = 'Failed'
+                    self.download_dropdown.update_downloads(self.downloads)
+                download.downloadProgress.connect(on_progress)
+                download.finished.connect(on_finished)
+                QMessageBox.information(self, "Download Started", f"Downloading to: {save_path}")
                 self.download_dropdown.update_downloads(self.downloads)
-            def on_finished():
-                if download.state() == download.DownloadCancelled:
-                    download_info['status'] = 'Cancelled'
-                elif download.state() == download.DownloadCompleted:
-                    download_info['status'] = 'Completed'
-                    download_info['progress'] = 100
-                else:
-                    download_info['status'] = 'Failed'
-                self.download_dropdown.update_downloads(self.downloads)
-            download.downloadProgress.connect(on_progress)
-            download.finished.connect(on_finished)
-            QMessageBox.information(self, "Download Started", f"Downloading to: {save_path}")
-            self.download_dropdown.update_downloads(self.downloads)
-        else:
-            download.cancel()
-        # Hide dropdown if no downloads
-        if not self.downloads:
-            self.download_dropdown.hide()
+            else:
+                download.cancel()
+            if not self.downloads:
+                self.download_dropdown.hide()
 
     def cancel_download(self, download, download_info):
         download.cancel()
@@ -988,41 +1030,17 @@ class MainWindow(QMainWindow):
             }
         """)
         
-        # Add menu actions
+        # Add menu actions with emojis/logos
         menu.addAction("🌙 Toggle Dark Mode", self.toggle_dark_mode_menu)
         menu.addSeparator()
-        menu.addAction("📊 View Page Source", self.view_page_source)
-        menu.addAction("🛠️ Inspect Element", self.inspect_element)
-        menu.addSeparator()
-        menu.addAction("📋 Bookmarks Manager", self.open_bookmarks_manager)
+        menu.addAction("� History", self.open_history)
+        menu.addAction("⬇️ Downloads", self.show_downloads)
         menu.addAction("⚙️ Settings", self.open_settings)
-        menu.addSeparator()
-        menu.addAction("❓ About Adapta", self.show_about)
         
         # Show menu at button position
         button_rect = self.menu_button.geometry()
         menu_pos = self.menu_button.mapToGlobal(button_rect.bottomLeft())
         menu.exec_(menu_pos)
-
-    def inspect_element(self):
-        """Open the built-in inspector/devtools for the current page (like Inspect Element in browsers)"""
-        tab = self.current_tab()
-        if tab and tab.browser:
-            # Robust DevTools window creation for PyQt5
-            if not hasattr(tab, '_devtools_window') or tab._devtools_window is None:
-                from PyQt5.QtWebEngineWidgets import QWebEngineView
-                devtools = QWebEngineView()
-                devtools.setWindowTitle("DevTools")
-                devtools.resize(900, 600)
-                devtools.show()
-                tab._devtools_window = devtools
-                tab.browser.page().setDevToolsPage(devtools.page())
-            else:
-                tab._devtools_window.show()
-                tab._devtools_window.raise_()
-                tab._devtools_window.activateWindow()
-            # Always trigger InspectElement to highlight
-            tab.browser.page().triggerAction(tab.browser.page().InspectElement)
 
     def toggle_dark_mode_menu(self):
         """Toggle dark mode from menu"""
@@ -1037,31 +1055,15 @@ class MainWindow(QMainWindow):
                 if "adapta_home.html" in current_url or "adapta://home" in current_url:
                     self.go_home(tab=tab)
 
-    def view_page_source(self):
-        """View page source (placeholder)"""
-        from PyQt5.QtWidgets import QMessageBox
-        QMessageBox.information(self, "Page Source", "Page source viewer coming soon!")
-
     def open_dev_tools(self):
         """Open developer tools (placeholder)"""
         from PyQt5.QtWidgets import QMessageBox
         QMessageBox.information(self, "Developer Tools", "Developer tools coming soon!")
 
-    def open_bookmarks_manager(self):
-        """Open bookmarks manager (placeholder)"""
-        from PyQt5.QtWidgets import QMessageBox
-        QMessageBox.information(self, "Bookmarks", "Bookmarks manager coming soon!")
-
     def open_settings(self):
         """Open settings (placeholder)"""
         from PyQt5.QtWidgets import QMessageBox
         QMessageBox.information(self, "Settings", "Settings panel coming soon!")
-
-    def show_about(self):
-        """Show about dialog"""
-        from PyQt5.QtWidgets import QMessageBox
-        QMessageBox.about(self, "About Adapta", 
-                         "Adapta Browser\n\nA modern, fast browser built with PyQt5\n\nVersion 1.0")
 
     def handle_voice_command(self):
         """Handle voice commands for browser navigation and control"""
@@ -1077,7 +1079,7 @@ class MainWindow(QMainWindow):
                 recognizer.adjust_for_ambient_noise(source, duration=0.5)
                 
                 # Show listening dialog
-                QMessageBox.information(self, "Voice Command", "Listening... Please speak your command.\n\nExample commands:\n• 'Go to YouTube'\n• 'Open new tab'\n• 'Go back'\n• 'Reload page'\n• 'Switch to [tab name]'")
+                QMessageBox.information(self, "Voice Command", "Listening... Please speak your command.\n\nExample commands:\n• 'Go to YouTube'\n• 'Open new tab'\n• 'Go back'\n• 'Reload page'\n• 'Switch to dark mode'\n• 'Enable light mode'\n• 'Search for cats'")
                 
                 # Listen for audio
                 audio = recognizer.listen(source, timeout=8, phrase_time_limit=5)
@@ -1192,12 +1194,49 @@ class MainWindow(QMainWindow):
             QMessageBox.information(self, "Voice Command", "Bookmark toggled")
             return
             
-        # Theme commands
-        elif "dark mode" in command or "toggle dark mode" in command:
-            self.toggle_dark_mode_menu()
-            mode = "dark" if self.is_dark_mode else "light"
-            QMessageBox.information(self, "Voice Command", f"Switched to {mode} mode")
-            return
+        # Theme commands - Enhanced dark mode voice recognition
+        elif any(phrase in command for phrase in [
+            "dark mode", "toggle dark mode", "switch to dark mode", "enable dark mode",
+            "turn on dark mode", "activate dark mode", "dark theme", "switch to dark theme",
+            "enable dark theme", "turn on dark theme", "night mode", "switch to night mode",
+            "enable night mode", "turn on night mode"
+        ]):
+            # If already in dark mode and user says "enable/turn on", inform them
+            if self.is_dark_mode and any(phrase in command for phrase in ["enable", "turn on", "activate", "switch to"]):
+                QMessageBox.information(self, "Voice Command", "Dark mode is already enabled!")
+                return
+            # If not in dark mode, or if they say "toggle", switch to dark mode
+            elif not self.is_dark_mode or "toggle" in command:
+                self.toggle_dark_mode_menu()
+                QMessageBox.information(self, "Voice Command", "Switched to dark mode")
+                return
+            # If already in dark mode and they say "dark mode" without toggle/enable, toggle off
+            else:
+                self.toggle_dark_mode_menu()
+                QMessageBox.information(self, "Voice Command", "Switched to light mode")
+                return
+                
+        # Light mode commands
+        elif any(phrase in command for phrase in [
+            "light mode", "switch to light mode", "enable light mode", "turn on light mode",
+            "activate light mode", "light theme", "switch to light theme", "enable light theme",
+            "turn on light theme", "day mode", "switch to day mode", "disable dark mode",
+            "turn off dark mode", "deactivate dark mode"
+        ]):
+            # If already in light mode and user says "enable/turn on", inform them
+            if not self.is_dark_mode and any(phrase in command for phrase in ["enable", "turn on", "activate", "switch to"]):
+                QMessageBox.information(self, "Voice Command", "Light mode is already enabled!")
+                return
+            # If in dark mode, or if they say "disable dark mode", switch to light mode
+            elif self.is_dark_mode or any(phrase in command for phrase in ["disable", "turn off", "deactivate"]):
+                self.toggle_dark_mode_menu()
+                QMessageBox.information(self, "Voice Command", "Switched to light mode")
+                return
+            # If already in light mode and they say "light mode", toggle to dark
+            else:
+                self.toggle_dark_mode_menu()
+                QMessageBox.information(self, "Voice Command", "Switched to dark mode")
+                return
         
         # Search commands
         elif "search for" in command:
@@ -1210,7 +1249,172 @@ class MainWindow(QMainWindow):
                 return
         
         # If no command matched
-        QMessageBox.information(self, "Voice Command", f"Command not recognized: '{command}'\n\nTry commands like:\n• 'Go to YouTube'\n• 'Open new tab'\n• 'Go back'\n• 'Search for cats'")
+        QMessageBox.information(self, "Voice Command", f"Command not recognized: '{command}'\n\nTry commands like:\n• 'Go to YouTube'\n• 'Open new tab'\n• 'Go back'\n• 'Search for cats'\n• 'Switch to dark mode'\n• 'Enable light mode'\n• 'Toggle dark theme'")
+
+    def open_history(self):
+        """Open browser history dialog"""
+        from PyQt5.QtWidgets import QDialog, QVBoxLayout, QListWidget, QListWidgetItem, QPushButton, QHBoxLayout, QLabel
+        
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Browser History")
+        dialog.setMinimumSize(500, 400)
+        dialog.resize(600, 500)
+        
+        layout = QVBoxLayout(dialog)
+        
+        # Header
+        header = QLabel("📜 Browser History")
+        header.setStyleSheet("font-size: 16px; font-weight: bold; padding: 10px; color: #333;")
+        layout.addWidget(header)
+        
+        # History list
+        history_list = QListWidget()
+        history_list.setStyleSheet("""
+            QListWidget {
+                border: 1px solid #ddd;
+                border-radius: 8px;
+                background-color: #fff;
+                font-size: 14px;
+            }
+            QListWidget::item {
+                padding: 8px;
+                border-bottom: 1px solid #eee;
+            }
+            QListWidget::item:hover {
+                background-color: #f5f5f5;
+            }
+            QListWidget::item:selected {
+                background-color: #e3f2fd;
+            }
+        """)
+        
+        # Collect history from all tabs
+        all_history = []
+        for i in range(self.tabs.count()):
+            tab = self.tabs.widget(i)
+            if tab and tab.browser and hasattr(tab, 'history'):
+                for url in tab.history:
+                    if url not in [h['url'] for h in all_history]:
+                        # Try to get page title
+                        if tab.browser.url().toString() == url:
+                            title = tab.browser.title() or url
+                        else:
+                            title = url
+                        all_history.append({'url': url, 'title': title})
+        
+        # Populate history list
+        if all_history:
+            for item in all_history:
+                list_item = QListWidgetItem()
+                list_item.setText(f"{item['title']}\n{item['url']}")
+                list_item.setData(1, item['url'])  # Store URL for navigation
+                history_list.addItem(list_item)
+        else:
+            no_history = QListWidgetItem("No browsing history available")
+            no_history.setFlags(no_history.flags() & ~Qt.ItemIsSelectable)
+            history_list.addItem(no_history)
+        
+        layout.addWidget(history_list)
+        
+        # Buttons
+        button_layout = QHBoxLayout()
+        
+        visit_button = QPushButton("🌐 Visit Selected")
+        visit_button.setStyleSheet("""
+            QPushButton {
+                background-color: #007aff;
+                color: white;
+                border: none;
+                padding: 8px 16px;
+                border-radius: 6px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #005bb5;
+            }
+            QPushButton:disabled {
+                background-color: #ccc;
+            }
+        """)
+        
+        clear_button = QPushButton("🗑️ Clear History")
+        clear_button.setStyleSheet("""
+            QPushButton {
+                background-color: #ff3b30;
+                color: white;
+                border: none;
+                padding: 8px 16px;
+                border-radius: 6px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #d70015;
+            }
+        """)
+        
+        close_button = QPushButton("✖️ Close")
+        close_button.setStyleSheet("""
+            QPushButton {
+                background-color: #8e8e93;
+                color: white;
+                border: none;
+                padding: 8px 16px;
+                border-radius: 6px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #6d6d70;
+            }
+        """)
+        
+        def visit_selected():
+            current_item = history_list.currentItem()
+            if current_item and current_item.data(1):
+                url = current_item.data(1)
+                self.url_input.setText(url)
+                self.navigate_to_url()
+                dialog.close()
+        
+        def clear_history():
+            from PyQt5.QtWidgets import QMessageBox
+            reply = QMessageBox.question(dialog, "Clear History", 
+                                       "Are you sure you want to clear all browsing history?",
+                                       QMessageBox.Yes | QMessageBox.No)
+            if reply == QMessageBox.Yes:
+                # Clear history from all tabs
+                for i in range(self.tabs.count()):
+                    tab = self.tabs.widget(i)
+                    if tab and hasattr(tab, 'history'):
+                        tab.history = []
+                        tab.current_index = -1
+                dialog.close()
+                QMessageBox.information(self, "History Cleared", "Browsing history has been cleared.")
+        
+        visit_button.clicked.connect(visit_selected)
+        clear_button.clicked.connect(clear_history)
+        close_button.clicked.connect(dialog.close)
+        
+        # Enable visit button only when an item is selected
+        def on_selection_changed():
+            visit_button.setEnabled(history_list.currentItem() is not None and 
+                                  history_list.currentItem().data(1) is not None)
+        
+        history_list.itemSelectionChanged.connect(on_selection_changed)
+        on_selection_changed()  # Initial state
+        
+        # Double-click to visit
+        history_list.itemDoubleClicked.connect(lambda: visit_selected())
+        
+        button_layout.addWidget(visit_button)
+        button_layout.addWidget(clear_button)
+        button_layout.addStretch()
+        button_layout.addWidget(close_button)
+        
+        layout.addLayout(button_layout)
+        
+        dialog.exec_()
+
+    # ...existing code...
 if __name__ == "__main__":
     app = QApplication(sys.argv)
     window = MainWindow()
