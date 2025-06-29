@@ -24,6 +24,44 @@ class BrowserTab(QWidget):
         self.current_index = -1
         self.is_dark_mode = is_dark_mode
 
+        # Add custom context menu for right-click
+        self.browser.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.browser.customContextMenuRequested.connect(self.show_custom_context_menu)
+        # Support for target="_blank" links
+        self.browser.createWindow = self.create_new_tab_for_window
+
+    def create_new_tab_for_window(self, window_type):
+        # Find the main window
+        mw = self.window()
+        if hasattr(mw, 'add_new_tab'):
+            # Create a new tab and return its QWebEngineView
+            new_tab = BrowserTab(is_dark_mode=self.is_dark_mode)
+            idx = mw.tabs.addTab(new_tab, "New Tab")
+            mw.tabs.setCurrentIndex(idx)
+            new_tab.browser.urlChanged.connect(mw.url_changed)
+            new_tab.browser.page().profile().downloadRequested.connect(mw.handle_download_requested)
+            return new_tab.browser
+        return None
+
+    def show_custom_context_menu(self, pos):
+        from PyQt5.QtWidgets import QMenu
+        from PyQt5.QtWebEngineWidgets import QWebEngineContextMenuData
+        menu = self.browser.page().createStandardContextMenu()
+        context_data = self.browser.page().contextMenuData()
+        link_url = context_data.linkUrl().toString() if context_data.linkUrl().isValid() else None
+        image_url = context_data.mediaUrl().toString() if context_data.mediaType() == QWebEngineContextMenuData.MediaTypeImage and context_data.mediaUrl().isValid() else None
+        # Prefer link if present, else image
+        target_url = link_url or image_url
+        if target_url:
+            open_in_new_tab_action = menu.addAction("Open Link in New Tab")
+            def open_in_new_tab():
+                # Find main window and call add_new_tab
+                mw = self.window()
+                if hasattr(mw, 'add_new_tab'):
+                    mw.add_new_tab(target_url)
+            open_in_new_tab_action.triggered.connect(open_in_new_tab)
+        menu.exec_(self.browser.mapToGlobal(pos))
+
 class DownloadManagerDialog(QDialog):
     def __init__(self, downloads, parent=None):
         super().__init__(parent)
@@ -374,6 +412,11 @@ class MainWindow(QMainWindow):
         idx = self.tabs.addTab(tab, "New Tab")
         self.tabs.setCurrentIndex(idx)
         tab.browser.urlChanged.connect(self.url_changed)
+        # Disconnect previous connections to avoid multiple prompts
+        try:
+            tab.browser.page().profile().downloadRequested.disconnect()
+        except Exception:
+            pass
         tab.browser.page().profile().downloadRequested.connect(self.handle_download_requested)
         if url:
             tab.browser.load(QUrl(url))
@@ -901,44 +944,43 @@ class MainWindow(QMainWindow):
             print(f"Error saving bookmarks: {e}")
 
     def handle_download_requested(self, download):
-        """Handle file download requests"""
+        """Handle file download requests (only one save dialog per download)"""
         from PyQt5.QtWidgets import QFileDialog, QMessageBox
         suggested_path = download.path()
-        # Ask user where to save the file
-        save_path, _ = QFileDialog.getSaveFileName(self, "Save File", suggested_path)
-        if save_path:
-            download.setPath(save_path)
-            download.accept()
-            download_info = {
-                'filename': os.path.basename(save_path),
-                'status': 'In Progress',
-                'progress': 0
-            }
-            # Now that download_info exists, add the cancel_callback
-            download_info['cancel_callback'] = partial(self.cancel_download, download, download_info)
-            self.downloads.append(download_info)
-            def on_progress(received, total):
-                percent = int(received * 100 / total) if total > 0 else 0
-                download_info['progress'] = percent
+        # Only prompt if the download is not already accepted
+        if download.state() == download.DownloadRequested:
+            save_path, _ = QFileDialog.getSaveFileName(self, "Save File", suggested_path)
+            if save_path:
+                download.setPath(save_path)
+                download.accept()
+                download_info = {
+                    'filename': os.path.basename(save_path),
+                    'status': 'In Progress',
+                    'progress': 0
+                }
+                download_info['cancel_callback'] = partial(self.cancel_download, download, download_info)
+                self.downloads.append(download_info)
+                def on_progress(received, total):
+                    percent = int(received * 100 / total) if total > 0 else 0
+                    download_info['progress'] = percent
+                    self.download_dropdown.update_downloads(self.downloads)
+                def on_finished():
+                    if download.state() == download.DownloadCancelled:
+                        download_info['status'] = 'Cancelled'
+                    elif download.state() == download.DownloadCompleted:
+                        download_info['status'] = 'Completed'
+                        download_info['progress'] = 100
+                    else:
+                        download_info['status'] = 'Failed'
+                    self.download_dropdown.update_downloads(self.downloads)
+                download.downloadProgress.connect(on_progress)
+                download.finished.connect(on_finished)
+                QMessageBox.information(self, "Download Started", f"Downloading to: {save_path}")
                 self.download_dropdown.update_downloads(self.downloads)
-            def on_finished():
-                if download.state() == download.DownloadCancelled:
-                    download_info['status'] = 'Cancelled'
-                elif download.state() == download.DownloadCompleted:
-                    download_info['status'] = 'Completed'
-                    download_info['progress'] = 100
-                else:
-                    download_info['status'] = 'Failed'
-                self.download_dropdown.update_downloads(self.downloads)
-            download.downloadProgress.connect(on_progress)
-            download.finished.connect(on_finished)
-            QMessageBox.information(self, "Download Started", f"Downloading to: {save_path}")
-            self.download_dropdown.update_downloads(self.downloads)
-        else:
-            download.cancel()
-        # Hide dropdown if no downloads
-        if not self.downloads:
-            self.download_dropdown.hide()
+            else:
+                download.cancel()
+            if not self.downloads:
+                self.download_dropdown.hide()
 
     def cancel_download(self, download, download_info):
         download.cancel()
