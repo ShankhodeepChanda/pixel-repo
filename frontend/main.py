@@ -5,8 +5,9 @@ import json
 import gc
 from PyQt5.QtWidgets import QApplication, QMainWindow, QVBoxLayout, QHBoxLayout, QWidget, QPushButton, QLineEdit, QTabWidget, QLabel, QDialog, QListWidget, QProgressBar, QListWidgetItem, QFrame
 from PyQt5.QtWebEngineWidgets import QWebEngineView
-from PyQt5.QtCore import QUrl, Qt
-from PyQt5.QtGui import QFont
+from PyQt5.QtCore import QUrl, Qt, QSize
+from PyQt5.QtGui import QFont, QIcon, QPixmap, QPainter
+from PyQt5.QtSvg import QSvgRenderer
 from functools import partial
 import speech_recognition as sr
 from PyQt5.QtWidgets import QMessageBox
@@ -309,21 +310,30 @@ class MainWindow(QMainWindow):
         toolbar_layout.addWidget(self.menu_button)
 
         # Add microphone button for voice commands
-        self.mic_button = QPushButton("🎤")
+        self.mic_button = QPushButton()
+        
+        # Load SVG icon for microphone
+        mic_icon = self.load_svg_icon("microphone-solid.svg", size=(24, 24))
+        if mic_icon:
+            self.mic_button.setIcon(mic_icon)
+            self.mic_button.setIconSize(QSize(24, 24))
+        else:
+            # Fallback to emoji if SVG not found
+            self.mic_button.setText("🎤")
+        
         self.mic_button.setFixedSize(40, 40)
         self.mic_button.setToolTip("Voice Command - Click to speak")
         self.mic_button.setStyleSheet("""
             QPushButton {
                 background: none;
                 border: none;
-                font-size: 20px;
                 color: #0078d4;
                 border-radius: 8px;
-                transition: all 0.2s ease;
+               
             }
             QPushButton:hover:enabled {
                 background-color: rgba(0, 120, 212, 0.08);
-                transform: scale(1.1);
+               
             }
             QPushButton:pressed {
                 background-color: rgba(0, 120, 212, 0.2);
@@ -1052,6 +1062,7 @@ class MainWindow(QMainWindow):
         
         # Show listening indicator
         self.mic_button.setText("🔴")  # Red dot to indicate listening
+        self.mic_button.setIcon(QIcon())  # Clear icon when showing listening text
         self.mic_button.setToolTip("Listening...")
         
         try:
@@ -1082,7 +1093,12 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "Voice Command", f"An error occurred: {e}")
         finally:
             # Reset microphone button
-            self.mic_button.setText("🎤")
+            mic_icon = self.load_svg_icon("microphone-solid.svg", size=(24, 24))
+            if mic_icon:
+                self.mic_button.setIcon(mic_icon)
+                self.mic_button.setText("")  # Clear any text when using icon
+            else:
+                self.mic_button.setText("🎤")
             self.mic_button.setToolTip("Voice Command - Click to speak")
 
     def process_voice_command(self, command):
@@ -1331,10 +1347,10 @@ class MainWindow(QMainWindow):
                 color: #2c3e50;
             }
             QTreeWidget::branch:closed:has-children {
-                image: url(data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAkAAAAJCAYAAADgkQYQAAAABHNCSVQICAgIfAhkiAAAAAlwSFlzAAAAdgAAAHYBTnsmCAAAABl0RVh0U29mdHdhcmUAd3d3Lmlua3NjYXBlLm9yZ5vuPBoAAAFYSURBVBiVpY+9SwJRFMWfc1+i0WgQhCBoaXBpCYKWaGkJGhqChoaGhqChoaGhIWhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhQUNDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NAAAAABJRU5ErkJggg==);
+                image: url(data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAkAAAAJCAYAAADgkQYQAAAABHNCSVQICAgIfAhkiAAAAAlwSFlzAAAAdgAAAHYBTnsmCAAAABl0RVh0U29mdHdhcmUAd3d3Lmlua3NjYXBlLm9yZ5vuPBoAAAFYSURBVBiVpY+9SwJRFMWfc1+i0WgQhCBoaXBpCYKWaGkJGhqChoaGhqChoaGhIWhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhQUNDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NAAAAABJRU5ErkJggg==);
             }
             QTreeWidget::branch:open:has-children {
-                image: url(data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAkAAAAJCAYAAADgkQYQAAAABHNCSVQICAgIfAhkiAAAAAlwSFlzAAAAdgAAAHYBTnsmCAAAABl0RVh0U29mdHdhcmUAd3d3Lmlua3NjYXBlLm9yZ5vuPBoAAAFYSURBVBiVpY+9SwJRFMWfc1+i0WgQhCBoaXBpCYKWaGkJGhqChoaGhqChoaGhIWhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhQUNDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NAAAAABJRU5ErkJggg==);
+                image: url(data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAkAAAAJCAYAAADgkQYQAAAABHNCSVQICAgIfAhkiAAAAAlwSFlzAAAAdgAAAHYBTnsmCAAAABl0RVh0U29mdHdhcmUAd3d3Lmlua3NjYXBlLm9yZ5vuPBoAAAFYSURBVBiVpY+9SwJRFMWfc1+i0WgQhCBoaXBpCYKWaGkJGhqChoaGhqChoaGhIWhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhQUNDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NAAAAABJRU5ErkJggg==);
             }
             QHeaderView::section {
                 background-color: #ecf0f1;
@@ -1633,6 +1649,25 @@ class MainWindow(QMainWindow):
         
         # Show dialog
         dialog.exec_()
+
+    def load_svg_icon(self, svg_filename, size=(24, 24), color=None):
+        """Load an SVG file as a QIcon with optional color tinting"""
+        try:
+            svg_path = os.path.join(os.path.dirname(__file__), svg_filename)
+            if not os.path.exists(svg_path):
+                return None
+            
+            svg_renderer = QSvgRenderer(svg_path)
+            pixmap = QPixmap(size[0], size[1])
+            pixmap.fill(Qt.transparent)
+            painter = QPainter(pixmap)
+            svg_renderer.render(painter)
+            painter.end()
+            
+            return QIcon(pixmap)
+        except Exception as e:
+            print(f"Error loading SVG icon {svg_filename}: {e}")
+            return None
 
   
 if __name__ == "__main__":

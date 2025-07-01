@@ -10,7 +10,7 @@ body {
     line-height: 1.6;
     min-height: 100vh;
     padding: 0 20px;
-    transition: all 0.3s ease;
+
 }
 
 .container {
@@ -198,9 +198,7 @@ body.dark .footer {
 
 /* Responsive design */
 @media (max-width: 768px) {
-    .time {
-        font-size: 3rem;
-    }
+
 
     .search-box {
         font-size: 16px;

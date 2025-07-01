@@ -12,9 +12,6 @@ function setTheme(isDark) {
 
 // Initialization
 function initialize() {
-    // Start time updates
-    setInterval(updateTime, 1000);
-
     // Focus search box
     const searchBox = document.querySelector('.search-box');
     if (searchBox) {
@@ -28,6 +25,5 @@ window.addEventListener('load', initialize);
 // Expose functions globally for Python integration
 window.AdaptaHome = {
     handleSearch,
-    updateTime,
     setTheme
 };
