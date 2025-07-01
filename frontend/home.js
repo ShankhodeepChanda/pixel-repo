@@ -5,20 +5,6 @@ function handleSearch(query) {
     }
 }
 
-// Time update functionality
-function updateTime() {
-    const now = new Date();
-    const timeString = now.toLocaleTimeString('en-US', {
-        hour12: false,
-        hour: '2-digit',
-        minute: '2-digit'
-    });
-    const timeElement = document.querySelector('#current-time');
-    if (timeElement) {
-        timeElement.textContent = timeString;
-    }
-}
-
 // Theme management
 function setTheme(isDark) {
     document.body.className = isDark ? 'dark' : '';

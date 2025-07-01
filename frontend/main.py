@@ -20,7 +20,7 @@ class BrowserTab(QWidget):
         self.browser = QWebEngineView()
         self.browser.setMinimumSize(400, 300)
         self.layout.addWidget(self.browser)
-        self.history = []
+        self.history = []  # Will store dicts with url, title, timestamp, favicon
         self.current_index = -1
         self.is_dark_mode = is_dark_mode
 
@@ -767,10 +767,31 @@ class MainWindow(QMainWindow):
             set_favicon()
             
             # Update history per tab
-            if not current_tab.history or current_tab.current_index < 0 or current_tab.history[current_tab.current_index] != url:
+            from datetime import datetime
+            current_url = current_tab.browser.url().toString()
+            current_title = current_tab.browser.title() or current_url
+            current_time = datetime.now()
+            
+            # Check if this URL is already the current history entry
+            if (not current_tab.history or 
+                current_tab.current_index < 0 or 
+                (isinstance(current_tab.history[current_tab.current_index], dict) and 
+                 current_tab.history[current_tab.current_index]['url'] != current_url) or
+                (isinstance(current_tab.history[current_tab.current_index], str) and 
+                 current_tab.history[current_tab.current_index] != current_url)):
+                
+                # Remove forward history if we're not at the end
                 if current_tab.current_index < len(current_tab.history) - 1:
                     current_tab.history = current_tab.history[:current_tab.current_index + 1]
-                current_tab.history.append(url)
+                
+                # Create history entry with detailed information
+                history_entry = {
+                    'url': current_url,
+                    'title': current_title,
+                    'timestamp': current_time,
+                    'favicon': current_tab.browser.icon()
+                }
+                current_tab.history.append(history_entry)
                 current_tab.current_index = len(current_tab.history) - 1
             
             self.update_navigation_buttons()
@@ -789,7 +810,8 @@ class MainWindow(QMainWindow):
         tab = self.current_tab()
         if tab and tab.current_index > 0:
             tab.current_index -= 1
-            url = tab.history[tab.current_index]
+            history_entry = tab.history[tab.current_index]
+            url = history_entry['url'] if isinstance(history_entry, dict) else history_entry
             tab.browser.load(QUrl(url))
 
     def go_forward(self):
@@ -797,7 +819,8 @@ class MainWindow(QMainWindow):
         tab = self.current_tab()
         if tab and tab.current_index < len(tab.history) - 1:
             tab.current_index += 1
-            url = tab.history[tab.current_index]
+            history_entry = tab.history[tab.current_index]
+            url = history_entry['url'] if isinstance(history_entry, dict) else history_entry
             tab.browser.load(QUrl(url))
 
     def reload_page(self):
@@ -1210,133 +1233,360 @@ class MainWindow(QMainWindow):
         QMessageBox.information(self, "Voice Command", f"Command not recognized: '{command}'\n\nTry commands like:\n• 'Go to YouTube'\n• 'Open new tab'\n• 'Go back'\n• 'Search for cats'\n• 'Switch to dark mode'\n• 'Enable light mode'\n• 'Toggle dark theme'")
 
     def open_history(self):
-        """Open browser history dialog"""
-        from PyQt5.QtWidgets import QDialog, QVBoxLayout, QListWidget, QListWidgetItem, QPushButton, QHBoxLayout, QLabel
+        """Open enhanced browser history dialog"""
+        from PyQt5.QtWidgets import (QDialog, QVBoxLayout, QTreeWidget, QTreeWidgetItem, 
+                                    QPushButton, QHBoxLayout, QLabel, QLineEdit, QSplitter)
+        from PyQt5.QtGui import QPixmap, QIcon
+        from PyQt5.QtCore import Qt
+        from datetime import datetime, timedelta
+        from collections import defaultdict
         
         dialog = QDialog(self)
-        dialog.setWindowTitle("Browser History")
-        dialog.setMinimumSize(500, 400)
-        dialog.resize(600, 500)
+        dialog.setWindowTitle("🕰️ Browser History")
+        dialog.setMinimumSize(700, 500)
+        dialog.resize(800, 600)
         
-        layout = QVBoxLayout(dialog)
-        
-        # Header
-        header = QLabel("📜 Browser History")
-        header.setStyleSheet("font-size: 16px; font-weight: bold; padding: 10px; color: #333;")
-        layout.addWidget(header)
-        
-        # History list
-        history_list = QListWidget()
-        history_list.setStyleSheet("""
-            QListWidget {
-                border: 1px solid #ddd;
-                border-radius: 8px;
-                background-color: #fff;
-                font-size: 14px;
+        # Apply modern styling
+        dialog.setStyleSheet("""
+            QDialog {
+                background-color: #f8f9fa;
             }
-            QListWidget::item {
-                padding: 8px;
-                border-bottom: 1px solid #eee;
-            }
-            QListWidget::item:hover {
-                background-color: #f5f5f5;
-            }
-            QListWidget::item:selected {
-                background-color: #e3f2fd;
+            QLabel {
+                color: #2c3e50;
             }
         """)
         
-        # Collect history from all tabs
+        layout = QVBoxLayout(dialog)
+        layout.setSpacing(15)
+        layout.setContentsMargins(20, 20, 20, 20)
+        
+        # Header with search
+        header_layout = QVBoxLayout()
+        
+        title_label = QLabel("🕰️ Browse Your History")
+        title_label.setStyleSheet("""
+            font-size: 24px; 
+            font-weight: bold; 
+            color: #2c3e50;
+            margin-bottom: 5px;
+        """)
+        header_layout.addWidget(title_label)
+        
+        subtitle_label = QLabel("Find and revisit your favorite pages")
+        subtitle_label.setStyleSheet("""
+            font-size: 14px; 
+            color: #7f8c8d;
+            margin-bottom: 10px;
+        """)
+        header_layout.addWidget(subtitle_label)
+        
+        # Search box
+        search_layout = QHBoxLayout()
+        search_label = QLabel("🔍")
+        search_label.setStyleSheet("font-size: 16px; margin-right: 5px;")
+        
+        search_box = QLineEdit()
+        search_box.setPlaceholderText("Search history...")
+        search_box.setStyleSheet("""
+            QLineEdit {
+                padding: 10px 15px;
+                border: 2px solid #bdc3c7;
+                border-radius: 25px;
+                font-size: 14px;
+                background-color: white;
+            }
+            QLineEdit:focus {
+                border-color: #3498db;
+                outline: none;
+            }
+        """)
+        
+        search_layout.addWidget(search_label)
+        search_layout.addWidget(search_box)
+        header_layout.addLayout(search_layout)
+        layout.addLayout(header_layout)
+        
+        # History tree widget
+        history_tree = QTreeWidget()
+        history_tree.setHeaderLabels(["📄 Page", "🌐 URL", "⏰ Time"])
+        history_tree.setAlternatingRowColors(True)
+        history_tree.setRootIsDecorated(True)
+        history_tree.setStyleSheet("""
+            QTreeWidget {
+                border: 1px solid #ddd;
+                border-radius: 10px;
+                background-color: white;
+                font-size: 14px;
+                selection-background-color: #e8f4fd;
+            }
+            QTreeWidget::item {
+                padding: 8px;
+                border-bottom: 1px solid #f1f2f6;
+            }
+            QTreeWidget::item:hover {
+                background-color: #f8f9fa;
+            }
+            QTreeWidget::item:selected {
+                background-color: #e8f4fd;
+                color: #2c3e50;
+            }
+            QTreeWidget::branch:closed:has-children {
+                image: url(data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAkAAAAJCAYAAADgkQYQAAAABHNCSVQICAgIfAhkiAAAAAlwSFlzAAAAdgAAAHYBTnsmCAAAABl0RVh0U29mdHdhcmUAd3d3Lmlua3NjYXBlLm9yZ5vuPBoAAAFYSURBVBiVpY+9SwJRFMWfc1+i0WgQhCBoaXBpCYKWaGkJGhqChoaGhqChoaGhIWhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhQUNDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NAAAAABJRU5ErkJggg==);
+            }
+            QTreeWidget::branch:open:has-children {
+                image: url(data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAkAAAAJCAYAAADgkQYQAAAABHNCSVQICAgIfAhkiAAAAAlwSFlzAAAAdgAAAHYBTnsmCAAAABl0RVh0U29mdHdhcmUAd3d3Lmlua3NjYXBlLm9yZ5vuPBoAAAFYSURBVBiVpY+9SwJRFMWfc1+i0WgQhCBoaXBpCYKWaGkJGhqChoaGhqChoaGhIWhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhQUNDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NAAAAABJRU5ErkJggg==);
+            }
+            QHeaderView::section {
+                background-color: #ecf0f1;
+                padding: 10px;
+                border: 1px solid #bdc3c7;
+                font-weight: bold;
+                color: #2c3e50;
+            }
+        """)
+        
+        # Collect and organize history
         all_history = []
         for i in range(self.tabs.count()):
             tab = self.tabs.widget(i)
-            if tab and tab.browser and hasattr(tab, 'history'):
-                for url in tab.history:
-                    if url not in [h['url'] for h in all_history]:
-                        # Try to get page title
-                        if tab.browser.url().toString() == url:
-                            title = tab.browser.title() or url
-                        else:
-                            title = url
-                        all_history.append({'url': url, 'title': title})
+            if tab and hasattr(tab, 'history'):
+                for entry in tab.history:
+                    if isinstance(entry, dict):
+                        all_history.append(entry)
+                    elif isinstance(entry, str):
+                        # Convert old string format to new dict format
+                        all_history.append({
+                            'url': entry,
+                            'title': entry,
+                            'timestamp': datetime.now(),
+                            'favicon': QIcon()
+                        })
         
-        # Populate history list
-        if all_history:
-            for item in all_history:
-                list_item = QListWidgetItem()
-                list_item.setText(f"{item['title']}\n{item['url']}")
-                list_item.setData(1, item['url'])  # Store URL for navigation
-                history_list.addItem(list_item)
-        else:
-            no_history = QListWidgetItem("No browsing history available")
-            no_history.setFlags(no_history.flags() & ~Qt.ItemIsSelectable)
-            history_list.addItem(no_history)
+        # Group history by date
+        history_by_date = defaultdict(list)
+        today = datetime.now().date()
+        yesterday = today - timedelta(days=1)
         
-        layout.addWidget(history_list)
+        for entry in all_history:
+            entry_date = entry['timestamp'].date()
+            if entry_date == today:
+                date_key = "📅 Today"
+            elif entry_date == yesterday:
+                date_key = "📅 Yesterday"
+            elif entry_date > today - timedelta(days=7):
+                date_key = f"📅 {entry['timestamp'].strftime('%A')}"
+            else:
+                date_key = f"📅 {entry['timestamp'].strftime('%B %d, %Y')}"
+            
+            history_by_date[date_key].append(entry)
         
-        # Buttons
+        def populate_tree(filter_text=""):
+            history_tree.clear()
+            
+            if not all_history:
+                no_history_item = QTreeWidgetItem(["No browsing history available", "", ""])
+                no_history_item.setFlags(no_history_item.flags() & ~Qt.ItemIsSelectable)
+                history_tree.addTopLevelItem(no_history_item)
+                return
+            
+            for date_group, entries in sorted(history_by_date.items(), 
+                                            key=lambda x: max(e['timestamp'] for e in x[1]), 
+                                            reverse=True):
+                # Filter entries based on search
+                filtered_entries = entries
+                if filter_text:
+                    filtered_entries = [e for e in entries 
+                                      if filter_text.lower() in e['title'].lower() or 
+                                         filter_text.lower() in e['url'].lower()]
+                
+                if not filtered_entries:
+                    continue
+                
+                # Create date group item
+                date_item = QTreeWidgetItem([date_group, "", ""])
+                date_item.setExpanded(True)
+                date_item.setFlags(date_item.flags() & ~Qt.ItemIsSelectable)
+                
+                # Style the date group
+                font = date_item.font(0)
+                font.setBold(True)
+                date_item.setFont(0, font)
+                
+                # Add entries under date group
+                for entry in sorted(filtered_entries, key=lambda x: x['timestamp'], reverse=True):
+                    time_str = entry['timestamp'].strftime('%I:%M %p')
+                    
+                    entry_item = QTreeWidgetItem([
+                        entry['title'][:60] + ("..." if len(entry['title']) > 60 else ""),
+                        entry['url'],
+                        time_str
+                    ])
+                    
+                    # Set favicon if available
+                    if hasattr(entry, 'favicon') and not entry['favicon'].isNull():
+                        entry_item.setIcon(0, entry['favicon'])
+                    else:
+                        entry_item.setIcon(0, QIcon("🌐"))
+                    
+                    # Store URL for navigation
+                    entry_item.setData(0, Qt.UserRole, entry['url'])
+                    
+                    # Add tooltip with full information
+                    entry_item.setToolTip(0, f"Title: {entry['title']}")
+                    entry_item.setToolTip(1, f"URL: {entry['url']}")
+                    entry_item.setToolTip(2, f"Visited: {entry['timestamp'].strftime('%c')}")
+                    
+                    date_item.addChild(entry_item)
+                
+                if date_item.childCount() > 0:
+                    history_tree.addTopLevelItem(date_item)
+        
+        # Search functionality
+        def on_search_changed():
+            populate_tree(search_box.text())
+        
+        search_box.textChanged.connect(on_search_changed)
+        
+        # Initial population
+        populate_tree()
+        
+        # Set column widths
+        history_tree.setColumnWidth(0, 300)
+        history_tree.setColumnWidth(1, 250)
+        history_tree.setColumnWidth(2, 100)
+        
+        layout.addWidget(history_tree)
+        
+        # Action buttons
         button_layout = QHBoxLayout()
+        button_layout.setSpacing(10)
         
-        visit_button = QPushButton("🌐 Visit Selected")
+        visit_button = QPushButton("🌐 Visit Page")
         visit_button.setStyleSheet("""
             QPushButton {
-                background-color: #007aff;
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #3498db, stop:1 #2980b9);
                 color: white;
                 border: none;
-                padding: 8px 16px;
-                border-radius: 6px;
+                padding: 12px 20px;
+                border-radius: 8px;
                 font-weight: bold;
+                font-size: 14px;
             }
             QPushButton:hover {
-                background-color: #005bb5;
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #5dade2, stop:1 #3498db);
+            }
+            QPushButton:pressed {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #2980b9, stop:1 #1f618d);
             }
             QPushButton:disabled {
-                background-color: #ccc;
+                background-color: #bdc3c7;
+                color: #7f8c8d;
             }
         """)
         
-        clear_button = QPushButton("🗑️ Clear History")
-        clear_button.setStyleSheet("""
+        delete_button = QPushButton("🗑️ Delete Selected")
+        delete_button.setStyleSheet("""
             QPushButton {
-                background-color: #ff3b30;
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #e74c3c, stop:1 #c0392b);
                 color: white;
                 border: none;
-                padding: 8px 16px;
-                border-radius: 6px;
+                padding: 12px 20px;
+                border-radius: 8px;
                 font-weight: bold;
+                font-size: 14px;
             }
             QPushButton:hover {
-                background-color: #d70015;
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #ec7063, stop:1 #e74c3c);
+            }
+            QPushButton:pressed {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #c0392b, stop:1 #a93226);
+            }
+            QPushButton:disabled {
+                background-color: #bdc3c7;
+                color: #7f8c8d;
+            }
+        """)
+        
+        clear_all_button = QPushButton("🧹 Clear All History")
+        clear_all_button.setStyleSheet("""
+            QPushButton {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #f39c12, stop:1 #e67e22);
+                color: white;
+                border: none;
+                padding: 12px 20px;
+                border-radius: 8px;
+                font-weight: bold;
+                font-size: 14px;
+            }
+            QPushButton:hover {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #f7c52d, stop:1 #f39c12);
+            }
+            QPushButton:pressed {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #e67e22, stop:1 #d35400);
             }
         """)
         
         close_button = QPushButton("✖️ Close")
         close_button.setStyleSheet("""
             QPushButton {
-                background-color: #8e8e93;
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #95a5a6, stop:1 #7f8c8d);
                 color: white;
                 border: none;
-                padding: 8px 16px;
-                border-radius: 6px;
+                padding: 12px 20px;
+                border-radius: 8px;
                 font-weight: bold;
+                font-size: 14px;
             }
             QPushButton:hover {
-                background-color: #6d6d70;
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #a6b4b5, stop:1 #95a5a6);
+            }
+            QPushButton:pressed {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #7f8c8d, stop:1 #6c7b7d);
             }
         """)
         
         def visit_selected():
-            current_item = history_list.currentItem()
-            if current_item and current_item.data(1):
-                url = current_item.data(1)
+            current_item = history_tree.currentItem()
+            if current_item and current_item.data(0, Qt.UserRole):
+                url = current_item.data(0, Qt.UserRole)
                 self.url_input.setText(url)
                 self.navigate_to_url()
                 dialog.close()
         
-        def clear_history():
+        def delete_selected():
+            current_item = history_tree.currentItem()
+            if current_item and current_item.data(0, Qt.UserRole):
+                from PyQt5.QtWidgets import QMessageBox
+                reply = QMessageBox.question(dialog, "Delete History Entry", 
+                                           "Are you sure you want to delete this history entry?",
+                                           QMessageBox.Yes | QMessageBox.No)
+                if reply == QMessageBox.Yes:
+                    url_to_remove = current_item.data(0, Qt.UserRole)
+                    # Remove from all tabs
+                    for i in range(self.tabs.count()):
+                        tab = self.tabs.widget(i)
+                        if tab and hasattr(tab, 'history'):
+                            tab.history = [entry for entry in tab.history 
+                                         if (isinstance(entry, dict) and entry['url'] != url_to_remove) or
+                                            (isinstance(entry, str) and entry != url_to_remove)]
+                    populate_tree(search_box.text())
+        
+        def clear_all_history():
             from PyQt5.QtWidgets import QMessageBox
-            reply = QMessageBox.question(dialog, "Clear History", 
-                                       "Are you sure you want to clear all browsing history?",
+            reply = QMessageBox.question(dialog, "Clear All History", 
+                                       "⚠️ This will permanently delete your entire browsing history. Are you sure?",
                                        QMessageBox.Yes | QMessageBox.No)
             if reply == QMessageBox.Yes:
                 # Clear history from all tabs
@@ -1346,33 +1596,45 @@ class MainWindow(QMainWindow):
                         tab.history = []
                         tab.current_index = -1
                 dialog.close()
-                QMessageBox.information(self, "History Cleared", "Browsing history has been cleared.")
+                QMessageBox.information(self, "History Cleared", "✅ All browsing history has been cleared.")
         
+        # Button connections
         visit_button.clicked.connect(visit_selected)
-        clear_button.clicked.connect(clear_history)
+        delete_button.clicked.connect(delete_selected)
+        clear_all_button.clicked.connect(clear_all_history)
         close_button.clicked.connect(dialog.close)
         
-        # Enable visit button only when an item is selected
+        # Enable buttons based on selection
         def on_selection_changed():
-            visit_button.setEnabled(history_list.currentItem() is not None and 
-                                  history_list.currentItem().data(1) is not None)
+            current_item = history_tree.currentItem()
+            has_selection = (current_item is not None and 
+                           current_item.data(0, Qt.UserRole) is not None)
+            visit_button.setEnabled(has_selection)
+            delete_button.setEnabled(has_selection)
         
-        history_list.itemSelectionChanged.connect(on_selection_changed)
+        history_tree.itemSelectionChanged.connect(on_selection_changed)
         on_selection_changed()  # Initial state
         
         # Double-click to visit
-        history_list.itemDoubleClicked.connect(lambda: visit_selected())
+        def on_double_click(item, column):
+            if item and item.data(0, Qt.UserRole):
+                visit_selected()
         
+        history_tree.itemDoubleClicked.connect(on_double_click)
+        
+        # Layout buttons
         button_layout.addWidget(visit_button)
-        button_layout.addWidget(clear_button)
+        button_layout.addWidget(delete_button)
         button_layout.addStretch()
+        button_layout.addWidget(clear_all_button)
         button_layout.addWidget(close_button)
         
         layout.addLayout(button_layout)
         
+        # Show dialog
         dialog.exec_()
 
-    # ...existing code...
+  
 if __name__ == "__main__":
     app = QApplication(sys.argv)
     window = MainWindow()
